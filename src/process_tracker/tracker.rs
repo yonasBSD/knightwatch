@@ -30,28 +30,46 @@ impl ProcessTrackerChannels {
     }
 }
 
-pub struct ProcessTrackerState {
-    root_pid: Option<u32>,
+pub struct RootProcess {
+    #[allow(unused)]
+    root_pid: u32,
+    first_tick: bool,
     prev_child_pids: HashSet<u32>,
     work_done: bool,
     root_exited: bool,
     children_ever_seen: bool,
     last_root: Option<ProcessSnapshot>,
     last_children: Vec<ProcessSnapshot>,
-    last_top_by_memory: Vec<ProcessSnapshot>,
-    last_top_by_cpu: Vec<ProcessSnapshot>,
 }
 
-impl ProcessTrackerState {
-    pub fn new(root_pid: Option<u32>) -> Self {
+impl RootProcess {
+    pub fn new(root_pid: u32) -> Self {
         Self {
             root_pid,
+            first_tick: true,
             prev_child_pids: HashSet::new(),
             work_done: false,
             root_exited: false,
             children_ever_seen: false,
             last_root: None,
             last_children: Vec::new(),
+        }
+    }
+}
+
+pub struct ProcessTrackerState {
+    root_processes: HashMap<u32, RootProcess>,
+    last_top_by_memory: Vec<ProcessSnapshot>,
+    last_top_by_cpu: Vec<ProcessSnapshot>,
+}
+
+impl ProcessTrackerState {
+    pub fn new(root_pids: Vec<u32>) -> Self {
+        Self {
+            root_processes: root_pids
+                .into_iter()
+                .map(|pid| (pid, RootProcess::new(pid)))
+                .collect(),
             last_top_by_memory: Vec::new(),
             last_top_by_cpu: Vec::new(),
         }
@@ -62,7 +80,6 @@ pub struct ProcessTracker {
     state: ProcessTrackerState,
     channels: ProcessTrackerChannels,
     sys: System,
-    first_tick: bool,
     poll_interval: Duration,
     poll_interval_timer: Option<tokio::time::Interval>,
     track_top_processes: bool,
@@ -70,13 +87,12 @@ pub struct ProcessTracker {
 }
 
 impl ProcessTracker {
-    pub fn new(pid: Option<u32>) -> Self {
+    pub fn new(pids: Vec<u32>) -> Self {
         let config = get_config();
         Self {
-            state: ProcessTrackerState::new(pid),
+            state: ProcessTrackerState::new(pids),
             channels: ProcessTrackerChannels::new(),
             sys: System::new(),
-            first_tick: true,
             poll_interval: Duration::from_secs(2),
             poll_interval_timer: None,
             track_top_processes: config.args.top_processes,
@@ -93,6 +109,15 @@ impl ProcessTracker {
     fn emit_event(&self, event: ProcessTrackerEvent) {
         // Err means no subscribers are listening right now — that's fine.
         let _ = self.channels.event_tx.send(event);
+    }
+
+    fn get_root_process_mut(&mut self, root_pid: &u32) -> Result<&mut RootProcess> {
+        self.state
+            .root_processes
+            .get_mut(root_pid)
+            .ok_or(Error::ProcessTracker(format!(
+                "Not Tracking a process with pid {root_pid}"
+            )))
     }
 
     async fn start_tracking_loop(mut self) -> Result<()> {
@@ -115,14 +140,34 @@ impl ProcessTracker {
 
     fn handle_query(&self, query: ProcessTrackerQuery) {
         match query {
-            ProcessTrackerQuery::GetRoot { response } => {
-                let _ = response.send(self.state.last_root.clone());
+            ProcessTrackerQuery::GetRoot { root_pid, response } => {
+                let _ = response.send(
+                    self.state
+                        .root_processes
+                        .get(&root_pid)
+                        .and_then(|rp| rp.last_root.clone()),
+                );
             }
-            ProcessTrackerQuery::GetChildren { response } => {
-                let _ = response.send(self.state.last_children.clone());
+            ProcessTrackerQuery::GetChildren { root_pid, response } => {
+                let _ = response.send(
+                    self.state
+                        .root_processes
+                        .get(&root_pid)
+                        .map(|process| process.last_children.clone())
+                        .unwrap_or_default(),
+                );
             }
-            ProcessTrackerQuery::IsWorkDone { response } => {
-                let _ = response.send(self.state.work_done);
+            ProcessTrackerQuery::IsWorkDone { root_pid, response } => {
+                let _ = response.send(
+                    self.state
+                        .root_processes
+                        .get(&root_pid)
+                        .map(|process| process.work_done)
+                        .unwrap_or_default(),
+                );
+            }
+            ProcessTrackerQuery::GetTrackedPids { response } => {
+                let _ = response.send(self.state.root_processes.keys().cloned().collect());
             }
             ProcessTrackerQuery::GetTopProcesses {
                 by,
@@ -164,41 +209,43 @@ impl ProcessTracker {
             true,
             ProcessRefreshKind::nothing().with_cpu().with_memory(),
         );
-        if !self.state.root_exited
-            && let Some(pid) = self.state.root_pid
-        {
-            self.update_root_pid_state(pid);
+        let pids: Vec<u32> = self.state.root_processes.keys().cloned().collect();
+        for pid in pids {
+            let _ = self.update_root_pid_state(pid);
         }
         if self.track_top_processes {
             self.set_top_processes();
         }
-        self.first_tick = false;
     }
 
-    fn update_root_pid_state(&mut self, root_pid: u32) {
+    fn update_root_pid_state(&mut self, root_pid: u32) -> Result<()> {
         // ----------------------------------------------------------------
         // Check root.
         // ----------------------------------------------------------------
-        let root_pid_sysinfo = Pid::from_u32(root_pid);
-        let root_snap = self.sys.process(root_pid_sysinfo).map(Into::into);
+        if self
+            .state
+            .root_processes
+            .get(&root_pid)
+            .is_none_or(|r| r.root_exited)
+        {
+            return Ok(());
+        }
+        let root_snap = self.sys.process(Pid::from_u32(root_pid)).map(Into::into);
+
         if root_snap.is_none() {
-            self.state.root_exited = true;
-            if !self.track_top_processes {
-                self.poll_interval_timer = None;
-            }
             self.emit_event(ProcessTrackerEvent::RootExited { pid: root_pid });
-            if self.first_tick {
+            let root_process = self.get_root_process_mut(&root_pid)?;
+            root_process.root_exited = true;
+            if root_process.first_tick {
                 error!(root_pid, "root process not found — is the PID correct?");
-                return;
+                return Ok(());
             } else {
                 warn!(root_pid, "root process exited");
-                if let Some(ref mut snap) = self.state.last_root {
+                if let Some(ref mut snap) = root_process.last_root {
                     snap.state = ProcessState::Gone;
                 }
             }
         }
-
-        self.state.last_root = root_snap.clone();
 
         // ----------------------------------------------------------------
         // Collect full descendant subtree.
@@ -206,15 +253,17 @@ impl ProcessTracker {
         let child_snaps = self.collect_descendants(root_pid);
         let current_child_pids: HashSet<u32> = child_snaps.iter().map(|s| s.pid).collect();
 
+        let root_process = self.get_root_process_mut(&root_pid)?;
+
+        root_process.last_root = root_snap.clone();
         // ----------------------------------------------------------------
         // Diff against previous tick.
         // ----------------------------------------------------------------
         let appeared_pids: Vec<u32> = current_child_pids
-            .difference(&self.state.prev_child_pids)
+            .difference(&root_process.prev_child_pids)
             .copied()
             .collect();
-        let disappeared_pids: Vec<u32> = self
-            .state
+        let disappeared_pids: Vec<u32> = root_process
             .prev_child_pids
             .difference(&current_child_pids)
             .copied()
@@ -223,7 +272,7 @@ impl ProcessTracker {
         // ----------------------------------------------------------------
         // Emit events.
         // ----------------------------------------------------------------
-        if self.first_tick {
+        if root_process.first_tick {
             self.emit_event(ProcessTrackerEvent::InitialSnapshot {
                 root: root_snap.clone().unwrap(),
                 children: child_snaps.clone(),
@@ -263,28 +312,33 @@ impl ProcessTracker {
             }
         }
 
+        let root_process = self.get_root_process_mut(&root_pid)?;
+
         // ----------------------------------------------------------------
         // Track whether we've ever seen children.
         // ----------------------------------------------------------------
         if !current_child_pids.is_empty() {
-            self.state.children_ever_seen = true;
+            root_process.children_ever_seen = true;
         }
 
         // ----------------------------------------------------------------
         // All children gone? Only fire on the transition, and only after
         // we've seen at least one child.
         // ----------------------------------------------------------------
-        let was_non_empty = !self.state.prev_child_pids.is_empty();
+        let was_non_empty = !root_process.prev_child_pids.is_empty();
         let now_empty = current_child_pids.is_empty();
 
-        if self.state.children_ever_seen && was_non_empty && now_empty {
+        if root_process.children_ever_seen && was_non_empty && now_empty {
             info!(root_pid, "all child processes have exited — work is done");
-            self.state.work_done = true;
+            root_process.work_done = true;
             self.emit_event(ProcessTrackerEvent::AllChildrenGone);
         }
 
-        self.state.last_children = child_snaps;
-        self.state.prev_child_pids = current_child_pids;
+        let root_process = self.get_root_process_mut(&root_pid)?;
+        root_process.last_children = child_snaps;
+        root_process.prev_child_pids = current_child_pids;
+        root_process.first_tick = false;
+        Ok(())
     }
 
     fn set_top_processes(&mut self) {
@@ -342,11 +396,10 @@ static PROCESS_TRACKER_EVENT_SENDER: OnceLock<broadcast::Sender<ProcessTrackerEv
 
 pub fn init_process_tracker() {
     let config = get_config();
-    if config.args.pid.is_none() && !config.args.top_processes {
+    if config.args.pid.is_empty() && !config.args.top_processes {
         return;
     }
-    let pid = config.args.pid;
-    let process_tracker = ProcessTracker::new(pid);
+    let process_tracker = ProcessTracker::new(config.args.pid.clone());
     PROCESS_TRACKER_QUERY_SENDER
         .set(process_tracker.channels.query_tx.clone())
         .unwrap();
@@ -359,8 +412,12 @@ pub fn init_process_tracker() {
         }
     });
     info!("Process Tracker started");
-    if let Some(pid) = pid {
-        info!("Tracking process tree rooted at PID {pid}");
+    let pids: Vec<String> = config.args.pid.iter().map(|p| p.to_string()).collect();
+    if !pids.is_empty() {
+        info!(
+            pids = pids.join(", "),
+            "Tracking process trees rooted at PID(s)"
+        );
     }
     if config.args.top_processes {
         info!(
@@ -381,35 +438,56 @@ fn get_process_tracker_query_sender() -> Option<&'static mpsc::Sender<ProcessTra
 }
 
 /// Get the current root process snapshot.
-pub async fn get_root() -> Option<ProcessSnapshot> {
-    let tx_ref = get_process_tracker_query_sender()?;
-    let (tx, rx) = oneshot::channel();
-    let _ = tx_ref
-        .send(ProcessTrackerQuery::GetRoot { response: tx })
-        .await;
-    rx.await.unwrap_or(None)
-}
-
-/// Get snapshots of all currently live child processes.
-pub async fn get_children() -> Vec<ProcessSnapshot> {
+pub async fn get_root_pids() -> Vec<u32> {
     let Some(tx_ref) = get_process_tracker_query_sender() else {
         return Vec::new();
     };
     let (tx, rx) = oneshot::channel();
     let _ = tx_ref
-        .send(ProcessTrackerQuery::GetChildren { response: tx })
+        .send(ProcessTrackerQuery::GetTrackedPids { response: tx })
+        .await;
+    rx.await.unwrap_or_default()
+}
+
+/// Get the current root process snapshot.
+pub async fn get_root(root_pid: u32) -> Option<ProcessSnapshot> {
+    let tx_ref = get_process_tracker_query_sender()?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerQuery::GetRoot {
+            root_pid,
+            response: tx,
+        })
+        .await;
+    rx.await.unwrap_or(None)
+}
+
+/// Get snapshots of all currently live child processes.
+pub async fn get_children(root_pid: u32) -> Vec<ProcessSnapshot> {
+    let Some(tx_ref) = get_process_tracker_query_sender() else {
+        return Vec::new();
+    };
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerQuery::GetChildren {
+            root_pid,
+            response: tx,
+        })
         .await;
     rx.await.unwrap_or_default()
 }
 
 /// Returns true when all children have exited (work is considered done).
-pub async fn is_work_done() -> bool {
+pub async fn is_work_done(root_pid: u32) -> bool {
     let Some(tx_ref) = get_process_tracker_query_sender() else {
         return true; // no tracker = no work to wait for
     };
     let (tx, rx) = oneshot::channel();
     let _ = tx_ref
-        .send(ProcessTrackerQuery::IsWorkDone { response: tx })
+        .send(ProcessTrackerQuery::IsWorkDone {
+            root_pid,
+            response: tx,
+        })
         .await;
     rx.await.unwrap_or(true)
 }

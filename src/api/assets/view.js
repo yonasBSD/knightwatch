@@ -2,9 +2,6 @@ const statusEl = document.getElementById("status");
 const screensDiv = document.getElementById("screens");
 const screensPane = document.getElementById("screens-pane");
 const rootSection = document.getElementById("root-section");
-const childSection = document.getElementById("children-section");
-const childrenList = document.getElementById("children-list");
-const childCount = document.getElementById("children-count");
 const workBanner = document.getElementById("work-banner");
 const topList = document.getElementById("top-processes-list");
 const topProcessesSection = document.getElementById("top-processes-section");
@@ -45,9 +42,8 @@ async function loadConfig() {
   }
 
   // Hide process pane sections based on config
-  if (config.pid == null) {
+  if (config.pid.length === 0) {
     rootSection.style.display = "none";
-    childSection.style.display = "none";
     workBanner.style.display = "none";
   }
 
@@ -242,37 +238,61 @@ function refreshScreenshots() {
 
 // ── Process refresh ────────────────────────────────────────────────
 
-function refreshProcess() {
-  fetch("/process")
-    .then((r) => {
-      if (!r.ok) throw new Error("HTTP error");
-      return r.json();
-    })
-    .then((data) => {
-      workBanner.classList.toggle("visible", data.work_done);
+async function refreshProcess() {
+  try {
+    const rIds = await fetch("/root_pids");
+    if (!rIds.ok) throw new Error("HTTP error");
+    const pids = await rIds.json();
 
-      if (data.root) {
-        rootSection.innerHTML = buildCard(data.root, true);
-      } else {
-        rootSection.innerHTML = `<div class="muted">Root process exited</div>`;
-      }
+    if (pids.length === 0) {
+      workBanner.classList.remove("visible");
+      rootSection.innerHTML = `<div class="muted">No process tracker running.</div>`;
+      return;
+    }
 
-      if (data.child_count > 0) {
-        childSection.style.display = "flex";
-        childSection.style.flexDirection = "column";
-        childSection.style.gap = "0.75rem";
-        childCount.textContent = data.child_count;
-        childrenList.innerHTML = data.children
-          .map((c) => buildCard(c))
-          .join("");
-      } else {
-        childSection.style.display = "none";
+    let rootsHtml = "";
+    let allWorkDone = true;
+
+    for (const pid of pids) {
+      try {
+        const r = await fetch(`/process/${pid}`);
+        if (!r.ok) continue;
+        const data = await r.json();
+
+        allWorkDone = allWorkDone && data.work_done;
+
+        rootsHtml += `<div class="process-group">`;
+
+        if (data.root) {
+          rootsHtml += buildCard(data.root, true);
+        } else {
+          rootsHtml += `<div class="muted">Root process ${pid} exited</div>`;
+        }
+
+        if (data.child_count > 0) {
+          rootsHtml += `
+            <div class="children-group" style="margin-top: 0.5rem; margin-left: 0.75rem; border-left: 2px solid var(--border); padding-left: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <div class="section-header" style="margin-top: 0">
+                Children <span class="count-badge">${data.child_count}</span>
+              </div>
+              ${data.children.map((c) => buildCard(c)).join("")}
+            </div>`;
+        }
+        
+        rootsHtml += `</div>`;
+      } catch (err) {
+        continue;
       }
-    })
-    .catch(() => {
-      rootSection.innerHTML = `<div class="muted">Monitor disabled</div>`;
-      childSection.style.display = "none";
-    });
+    }
+
+    workBanner.classList.toggle("visible", pids.length > 0 && allWorkDone);
+    rootSection.style.display = "flex";
+    rootSection.style.flexDirection = "column";
+    rootSection.style.gap = "1rem";
+    rootSection.innerHTML = rootsHtml;
+  } catch (err) {
+    rootSection.innerHTML = `<div class="muted">Monitor disabled</div>`;
+  }
 }
 
 // ── Top Processes refresh ──────────────────────────────────────────
@@ -327,10 +347,8 @@ loadConfig().then(() => {
     screenshotInterval = setInterval(refreshScreenshots, 2000);
   }
 
-  if (config.pid != null) {
-    refreshProcess();
-    processInterval = setInterval(refreshProcess, 2000);
-  }
+  refreshProcess();
+  processInterval = setInterval(refreshProcess, 2000);
 
   if (config.top_processes) {
     refreshTopProcesses();

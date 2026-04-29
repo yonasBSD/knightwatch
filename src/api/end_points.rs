@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::{Html, Json, Response},
 };
@@ -41,7 +41,7 @@ pub async fn config() -> Json<ConfigResponse> {
     let args = &crate::prelude::get_config().args;
     Json(ConfigResponse {
         blind: args.blind,
-        pid: args.pid,
+        pid: args.pid.clone(),
         top_processes: args.top_processes,
         limit_processes: args.limit_processes,
         telegram_bot: args.telegram,
@@ -111,15 +111,22 @@ pub async fn view_js() -> Response<Body> {
 // Process tracking endpoints
 // ---------------------------------------------------------------------------
 
-/// `GET /process`
+/// `GET /root_pids`
 ///
-/// Returns the full process tree: root + all live descendants, plus a
+/// Returns a list of currently tracked root PIDs.
+pub async fn root_pids() -> Json<Vec<u32>> {
+    Json(process_tracker::get_root_pids().await)
+}
+
+/// `GET /process/{pid}`
+///
+/// Returns the full process tree of a given root pid: root + all live descendants, plus a
 /// `work_done` flag. Useful for dashboards or external orchestration.
-pub async fn process_tree() -> Json<ProcessTree> {
+pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
     let (root_snap, children_snaps, work_done) = tokio::join!(
-        process_tracker::get_root(),
-        process_tracker::get_children(),
-        process_tracker::is_work_done(),
+        process_tracker::get_root(root_pid),
+        process_tracker::get_children(root_pid),
+        process_tracker::is_work_done(root_pid),
     );
 
     let child_count = children_snaps.len();
@@ -132,11 +139,13 @@ pub async fn process_tree() -> Json<ProcessTree> {
     })
 }
 
-/// `GET /process/root`
+/// `GET /process/root/{pid}`
 ///
-/// Returns only the root process snapshot, or 404 if it has exited.
-pub async fn process_root() -> Result<Json<ProcessInfo>, (StatusCode, Json<ErrorResponse>)> {
-    match process_tracker::get_root().await {
+/// Returns only the root process snapshot of a given root pid, or 404 if it has exited.
+pub async fn process_root(
+    Path(root_pid): Path<u32>,
+) -> Result<Json<ProcessInfo>, (StatusCode, Json<ErrorResponse>)> {
+    match process_tracker::get_root(root_pid).await {
         Some(snap) => Ok(Json(ProcessInfo::from(snap))),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -148,23 +157,23 @@ pub async fn process_root() -> Result<Json<ProcessInfo>, (StatusCode, Json<Error
     }
 }
 
-/// `GET /process/children`
+/// `GET /process/children/{pid}`
 ///
-/// Returns snapshots of all currently live child processes.
-pub async fn process_children() -> Json<Vec<ProcessInfo>> {
-    let children = process_tracker::get_children().await;
+/// Returns snapshots of all currently live child processes of a given root pid.
+pub async fn process_children(Path(root_pid): Path<u32>) -> Json<Vec<ProcessInfo>> {
+    let children = process_tracker::get_children(root_pid).await;
     Json(children.into_iter().map(Into::into).collect())
 }
 
-/// `GET /process/status`
+/// `GET /process/status/{pid}`
 ///
 /// Lightweight summary — cheap to poll frequently.
-/// Returns root alive/dead, child count, and the `work_done` flag.
-pub async fn process_status() -> Json<ProcessStatus> {
+/// Returns root alive/dead, child count, and the `work_done` flag of a given root pid.
+pub async fn process_status(Path(root_pid): Path<u32>) -> Json<ProcessStatus> {
     let (root_snap, child_count, work_done) = tokio::join!(
-        process_tracker::get_root(),
-        async { process_tracker::get_children().await.len() },
-        process_tracker::is_work_done(),
+        process_tracker::get_root(root_pid),
+        async { process_tracker::get_children(root_pid).await.len() },
+        process_tracker::is_work_done(root_pid),
     );
 
     Json(ProcessStatus {

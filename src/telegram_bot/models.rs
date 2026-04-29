@@ -26,7 +26,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::struc
         let s = self.0;
         write!(
             f,
-            "🔹 *{name}* `(PID {pid})`\n   ├ State: `{state}`\n   ├ CPU: `{cpu:.1}%`\n   └ Mem: `{mem}`",
+            "🔹 *{name}* `\\(PID {pid}\\)`\n   ├ State: `{state}`\n   ├ CPU: `{cpu:.1}%`\n   └ Mem: `{mem}`",
             pid = s.pid,
             name = escape_mdv2(&s.name),
             state = escape_mdv2(&s.state),
@@ -73,7 +73,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::struc
         if t.child_count == 0 {
             writeln!(f, "\n*Children:* _none_")?;
         } else {
-            writeln!(f, "\n*Children* ({}):", t.child_count)?;
+            writeln!(f, "\n*Children* \\({}\\):", t.child_count)?;
             for child in &t.children {
                 writeln!(f, "{}\n", TelegramDisplay(child))?;
             }

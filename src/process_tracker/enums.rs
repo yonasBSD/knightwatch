@@ -27,18 +27,26 @@ pub enum ProcessTrackerEvent {
 pub enum ProcessTrackerQuery {
     /// Returns a snapshot of the root process (None if already gone).
     GetRoot {
+        root_pid: u32,
         response: oneshot::Sender<Option<ProcessSnapshot>>,
     },
     /// Returns snapshots of all currently live descendants.
     GetChildren {
+        root_pid: u32,
         response: oneshot::Sender<Vec<ProcessSnapshot>>,
     },
     /// Returns true when no live descendants remain.
-    IsWorkDone { response: oneshot::Sender<bool> },
+    IsWorkDone {
+        root_pid: u32,
+        response: oneshot::Sender<bool>,
+    },
     GetTopProcesses {
         by: SortKey,
         limit: usize,
         response: oneshot::Sender<Vec<ProcessSnapshot>>,
+    },
+    GetTrackedPids {
+        response: oneshot::Sender<Vec<u32>>,
     },
 }
 
@@ -119,7 +127,9 @@ impl TryFrom<String> for SortKey {
         match value.as_str() {
             "cpu" => Ok(Self::Cpu),
             "mem" => Ok(Self::Memory),
-            _ => Err(format!("Invalid sort key: '{value}'. Expected 'cpu' or 'mem'")),
+            _ => Err(format!(
+                "Invalid sort key: '{value}'. Expected 'cpu' or 'mem'"
+            )),
         }
     }
 }

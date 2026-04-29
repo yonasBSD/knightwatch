@@ -11,7 +11,7 @@ pub struct HealthResponse {
 #[derive(Debug, Serialize)]
 pub struct ConfigResponse {
     pub blind: bool,
-    pub pid: Option<u32>,
+    pub pid: Vec<u32>,
     pub top_processes: bool,
     pub limit_processes: usize,
     pub telegram_bot: bool,

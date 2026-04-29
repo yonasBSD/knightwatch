@@ -28,7 +28,7 @@ pub struct CliArgs {
 
     /// Process ID to track
     #[arg(long)]
-    pub pid: Option<u32>,
+    pub pid: Vec<u32>,
 
     /// Enable Telegram bot
     #[arg(long, default_value_t = false)]

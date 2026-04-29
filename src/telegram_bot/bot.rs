@@ -217,26 +217,25 @@ async fn handle_screenshot(bot: Bot, msg: Message) -> Result<()> {
 }
 
 async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
-    let (root_snap, children_snaps, work_done) = tokio::join!(
-        process_tracker::get_root(),
-        process_tracker::get_children(),
-        process_tracker::is_work_done(),
-    );
-
-    let child_count = children_snaps.len();
-    let process_tree_snapshot =
-        super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
-            root: root_snap.map(Into::into),
-            children: children_snaps
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            child_count,
-            work_done,
-            timestamp: crate::utils::now_rfc3339(),
-        });
-    bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
-        .await?;
+    for root_pid in process_tracker::get_root_pids().await {
+        let (root_snap, children_snaps, work_done) = tokio::join!(
+            process_tracker::get_root(root_pid),
+            process_tracker::get_children(root_pid),
+            process_tracker::is_work_done(root_pid),
+        );
+        let child_count = children_snaps.len();
+        let process_tree_snapshot =
+            super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
+                root: root_snap.map(Into::into),
+                children: children_snaps.into_iter().map(Into::into).collect(),
+                child_count,
+                work_done,
+                timestamp: crate::utils::now_rfc3339(),
+            });
+        bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
+            .parse_mode(ParseMode::MarkdownV2)
+            .await?;
+    }
     Ok(())
 }
 

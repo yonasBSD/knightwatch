@@ -19,7 +19,13 @@ async function loadConfig() {
     if (!r.ok) throw new Error("config fetch failed");
     config = await r.json();
   } catch {
-    config = { blind: false, pid: null, top_processes: true, limit_processes: 50, telegram_bot: false };
+    config = {
+      blind: false,
+      pid: null,
+      top_processes: false,
+      limit_processes: 5,
+      telegram_bot: false,
+    };
   }
 
   // Telegram indicator
@@ -271,14 +277,17 @@ async function refreshProcess() {
 
         if (data.child_count > 0) {
           rootsHtml += `
-            <div class="children-group" style="margin-top: 0.5rem; margin-left: 0.75rem; border-left: 2px solid var(--border); padding-left: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
-              <div class="section-header" style="margin-top: 0">
+            <details class="children-group" style="margin-top: 0.5rem; margin-left: 0.75rem;">
+              <summary class="section-header" style="margin-top: 0; cursor: pointer; user-select: none;">
                 Children <span class="count-badge">${data.child_count}</span>
+                <span class="muted" style="margin-left:auto; font-size: 0.7rem; font-weight: normal;">(click to toggle)</span>
+              </summary>
+              <div style="border-left: 2px solid var(--border); padding-left: 0.75rem; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                ${data.children.map((c) => buildCard(c)).join("")}
               </div>
-              ${data.children.map((c) => buildCard(c)).join("")}
-            </div>`;
+            </details>`;
         }
-        
+
         rootsHtml += `</div>`;
       } catch (err) {
         continue;

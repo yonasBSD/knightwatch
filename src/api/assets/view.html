@@ -7,20 +7,24 @@
     <link rel="stylesheet" href="/view.css" />
   </head>
   <body>
-    <header>
-      <h1>Knight Watch</h1>
-      <span id="status">Loading…</span>
-      <span id="telegram-indicator" style="display:none"></span>
-      <button id="shutdown-btn" title="Shut down the server">● Shutdown</button>
-    </header>
-
-    <main>
-      <div id="screens-pane">
+    <div class="app-layout">
+      <main id="screens-pane">
+        <header>
+          <h2>Monitored Screens</h2>
+        </header>
         <div id="screens"></div>
-      </div>
+      </main>
 
       <aside id="process-pane">
-        <h2>Process Monitor</h2>
+        <div class="brand">
+          <h1>Knight Watch</h1>
+          <span id="status">Loading…</span>
+          <span id="telegram-indicator" style="display: none"></span>
+          <button id="shutdown-btn" title="Shut down the server">
+            ● Shutdown
+          </button>
+        </div>
+
         <div id="process-content">
           <div id="work-banner">✔ Work complete — all children exited</div>
 
@@ -51,7 +55,7 @@
           </div>
         </div>
       </aside>
-    </main>
+    </div>
 
     <script src="/view.js" defer></script>
   </body>

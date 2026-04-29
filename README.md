@@ -32,10 +32,11 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 | `GET /` | GET | Serves the self-contained `view.html` dashboard |
 | `GET /health` | GET | Returns server status, version, and uptime |
 | `GET /screenshot` | GET | Returns a JSON array of base64-encoded PNG screen captures |
-| `GET /process` | GET | Returns root process info, child processes, CPU/memory stats, and `work_done` flag |
-| `GET /process/root` | GET | Returns only the root process snapshot, or 404 if it has exited |
-| `GET /process/children` | GET | Returns snapshots of all currently live child processes |
-| `GET /process/status` | GET | Lightweight summary — root alive/dead, child count, and `work_done` flag |
+| `GET /root_pids` | GET | Returns a list of pids being tracked |
+| `GET /process/<PID>` | GET | Returns root process info, child processes, CPU/memory stats, and `work_done` flag |
+| `GET /process/root/<PID>` | GET | Returns only the root process snapshot, or 404 if it has exited |
+| `GET /process/children/<PID>` | GET | Returns snapshots of all currently live child processes |
+| `GET /process/status/<PID>` | GET | Lightweight summary — root alive/dead, child count, and `work_done` flag |
 | `GET /top-processes` | GET | Returns the top N processes sorted by the given key. |
 | `POST /shutdown` | POST | Gracefully shuts down the server |
 
@@ -60,7 +61,7 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 }
 ```
 
-**`/process`**
+**`/process/1234`**
 
 ```json
 {
@@ -78,7 +79,7 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 }
 ```
 
-**`/process/root`**
+**`/process/root/1234`**
 
 Returns a single `ProcessInfo` object, or `404` if the root process has exited.
 
@@ -129,7 +130,7 @@ Process `state` can be `running`, `sleeping`, `gone`, or any other string (rende
 ### Running
 
 ```bash
-knightwatch --pid <PID>
+knightwatch --pid <PID> --pid <PID>
 ```
 
 Pass the PID of the root process you want to monitor. The server will start on `0.0.0.0:8083` by default.
@@ -138,7 +139,7 @@ Pass the PID of the root process you want to monitor. The server will start on `
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--pid <PID>` | — | PID of the root process to track |
+| `--pid <PID>` | — | PID of the root process to track (repeatable) |
 | `--host <HOST>` | `0.0.0.0` | Host address for the API server |
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
 | `--no-server` | `false` | Disable the API server entirely |

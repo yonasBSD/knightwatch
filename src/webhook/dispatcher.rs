@@ -73,17 +73,18 @@ fn event_to_payload(event: &ProcessTrackerEvent) -> WebhookPayload {
         ProcessTrackerEvent::RootExited { pid } => {
             ("process.root_exited", serde_json::json!({ "pid": pid }))
         }
-        ProcessTrackerEvent::ChildrenExited(pids) => (
+        ProcessTrackerEvent::ChildrenExited { pid, children } => (
             "process.children_exited",
-            serde_json::json!({ "pids": pids }),
+            serde_json::json!({ "pid": pid, "children": children }),
         ),
-        ProcessTrackerEvent::ChildrenAppeared(snaps) => (
+        ProcessTrackerEvent::ChildrenAppeared { pid, children } => (
             "process.children_appeared",
-            serde_json::json!({ "count": snaps.len() }),
+            serde_json::json!({ "pid": pid, "children": children }),
         ),
-        ProcessTrackerEvent::AllChildrenGone => {
-            ("process.all_children_gone", serde_json::json!({}))
-        }
+        ProcessTrackerEvent::AllChildrenGone { pid } => (
+            "process.all_children_gone",
+            serde_json::json!({ "pid": pid }),
+        ),
         ProcessTrackerEvent::InitialSnapshot { root, children } => (
             "process.initial_snapshot",
             serde_json::json!({
@@ -91,6 +92,9 @@ fn event_to_payload(event: &ProcessTrackerEvent) -> WebhookPayload {
                 "child_count": children.len()
             }),
         ),
+        ProcessTrackerEvent::WorkComplete { pid } => {
+            ("process.work_complete", serde_json::json!({ "pid": pid }))
+        }
     };
     WebhookPayload {
         version: env!("CARGO_PKG_VERSION"),

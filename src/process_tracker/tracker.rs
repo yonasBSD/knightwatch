@@ -34,6 +34,7 @@ pub struct RootProcess {
     #[allow(unused)]
     root_pid: u32,
     first_tick: bool,
+    root_appeared: bool,
     prev_child_pids: HashSet<u32>,
     work_done: bool,
     root_exited: bool,
@@ -47,6 +48,7 @@ impl RootProcess {
         Self {
             root_pid,
             first_tick: true,
+            root_appeared: false,
             prev_child_pids: HashSet::new(),
             work_done: false,
             root_exited: false,
@@ -232,7 +234,9 @@ impl ProcessTracker {
         }
         let root_snap = self.sys.process(Pid::from_u32(root_pid)).map(Into::into);
 
-        if root_snap.is_none() {
+        if root_snap.is_some() {
+            self.get_root_process_mut(&root_pid)?.root_appeared = true;
+        } else {
             self.emit_event(ProcessTrackerEvent::RootExited { pid: root_pid });
             let root_process = self.get_root_process_mut(&root_pid)?;
             root_process.root_exited = true;
@@ -278,14 +282,18 @@ impl ProcessTracker {
                 children: child_snaps.clone(),
             });
             if child_snaps.is_empty() {
-                info!("no child processes found yet — waiting for them to spawn");
+                info!(
+                    root_pid,
+                    "no child processes found yet — waiting for them to spawn"
+                );
             } else {
                 info!(
+                    root_pid,
                     count = child_snaps.len(),
                     "discovered initial child processes"
                 );
                 for child in &child_snaps {
-                    info!(pid = child.pid, name = %child.name, state = %child.state, "  └─ child");
+                    info!(root_pid, pid = child.pid, name = %child.name, state = %child.state, "  └─ child");
                 }
             }
         } else {
@@ -296,19 +304,23 @@ impl ProcessTracker {
                     .filter_map(|pid| child_snaps.iter().find(|s| s.pid == *pid).cloned())
                     .collect();
                 for s in &appeared_snaps {
-                    info!(pid = s.pid, name = %s.name, "child process appeared");
+                    info!(root_pid, pid = s.pid, name = %s.name, "child process appeared");
                 }
-                self.emit_event(ProcessTrackerEvent::ChildrenAppeared(appeared_snaps));
+                self.emit_event(ProcessTrackerEvent::ChildrenAppeared {
+                    pid: root_pid,
+                    children: appeared_snaps,
+                });
             }
 
             // Disappeared
             if !disappeared_pids.is_empty() {
                 for pid in &disappeared_pids {
-                    warn!(pid, "child process exited");
+                    warn!(root_pid, pid, "child process exited");
                 }
-                self.emit_event(ProcessTrackerEvent::ChildrenExited(
-                    disappeared_pids.clone(),
-                ));
+                self.emit_event(ProcessTrackerEvent::ChildrenExited {
+                    pid: root_pid,
+                    children: disappeared_pids,
+                });
             }
         }
 
@@ -325,13 +337,20 @@ impl ProcessTracker {
         // All children gone? Only fire on the transition, and only after
         // we've seen at least one child.
         // ----------------------------------------------------------------
-        let was_non_empty = !root_process.prev_child_pids.is_empty();
-        let now_empty = current_child_pids.is_empty();
+        let all_children_gone = root_process.children_ever_seen
+            && !root_process.prev_child_pids.is_empty()
+            && current_child_pids.is_empty();
+        let work_done =
+            root_process.root_exited && root_process.root_appeared && current_child_pids.is_empty();
 
-        if root_process.children_ever_seen && was_non_empty && now_empty {
-            info!(root_pid, "all child processes have exited — work is done");
-            root_process.work_done = true;
-            self.emit_event(ProcessTrackerEvent::AllChildrenGone);
+        if all_children_gone {
+            info!(root_pid, "all child processes have exited");
+            self.emit_event(ProcessTrackerEvent::AllChildrenGone { pid: root_pid });
+        }
+        if work_done {
+            info!(root_pid, "work is done");
+            self.get_root_process_mut(&root_pid)?.work_done = true;
+            self.emit_event(ProcessTrackerEvent::WorkComplete { pid: root_pid });
         }
 
         let root_process = self.get_root_process_mut(&root_pid)?;
@@ -375,14 +394,21 @@ impl ProcessTracker {
 
     fn collect_descendants(&self, root_pid: u32) -> Vec<ProcessSnapshot> {
         let root = Pid::from_u32(root_pid);
+        let mut children_map: HashMap<Pid, Vec<Pid>> = HashMap::new();
+        for (pid, proc) in self.sys.processes() {
+            if let Some(parent) = proc.parent() {
+                children_map.entry(parent).or_default().push(*pid);
+            }
+        }
         let mut result = Vec::new();
         let mut queue = vec![root];
         while let Some(parent) = queue.pop() {
-            for (pid, proc) in self.sys.processes() {
-                if proc.parent() == Some(parent) && *pid != root {
-                    let process = ProcessSnapshot::from(proc);
-                    result.push(process);
-                    queue.push(*pid);
+            if let Some(children) = children_map.get(&parent) {
+                for pid in children {
+                    if let Some(proc) = self.sys.process(*pid) {
+                        result.push(ProcessSnapshot::from(proc));
+                        queue.push(*pid);
+                    }
                 }
             }
         }

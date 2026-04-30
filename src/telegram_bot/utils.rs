@@ -21,27 +21,35 @@ pub fn format_event(event: &ProcessTrackerEvent) -> String {
             }
             msg
         }
-        ProcessTrackerEvent::ChildrenAppeared(snapshots) => {
-            let mut msg = format!("🆕 *New Children Appeared* ({})", snapshots.len());
-            for snap in snapshots {
-                let info = TelegramDisplay(&ProcessInfo::from(snap));
+        ProcessTrackerEvent::ChildrenAppeared { pid, children } => {
+            let mut msg = format!(
+                "🆕 *New Children Appeared* ({})\n*Root:* `{pid}`",
+                children.len()
+            );
+            for child in children {
+                let info = TelegramDisplay(&ProcessInfo::from(child));
                 msg.push_str(&format!("\n{info}\n"));
             }
             msg
         }
-        ProcessTrackerEvent::ChildrenExited(pids) => {
-            let pid_list = pids
+        ProcessTrackerEvent::ChildrenExited { pid, children } => {
+            let pid_list = children
                 .iter()
                 .map(|p| format!("`{p}`"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("🔴 *Children Exited*\nPIDs: {pid_list}")
+            format!("🔴 *Children Exited*\n*Root:* `{pid}`\nchildren PIDs: {pid_list}")
         }
-        ProcessTrackerEvent::AllChildrenGone => {
-            "✅ *All children have exited*\nThe root process may still be running\\.".to_string()
+        ProcessTrackerEvent::AllChildrenGone { pid } => {
+            format!(
+                "✅ *All children have exited*\n*Root:* `{pid}`\nThe root process may still be running\\."
+            )
         }
         ProcessTrackerEvent::RootExited { pid } => {
             format!("💀 *Root Process Exited*\nPID: `{pid}`")
+        }
+        ProcessTrackerEvent::WorkComplete { pid } => {
+            format!("✅ *Work Complete*\nPID: `{pid}`")
         }
     }
 }

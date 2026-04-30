@@ -1,3 +1,4 @@
+use serde::Serialize;
 use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
@@ -13,13 +14,26 @@ pub enum ProcessTrackerEvent {
         children: Vec<ProcessSnapshot>,
     },
     /// One or more new child processes appeared.
-    ChildrenAppeared(Vec<ProcessSnapshot>),
+    ChildrenAppeared {
+        pid: u32,
+        children: Vec<ProcessSnapshot>,
+    },
     /// One or more child PIDs exited.
-    ChildrenExited(Vec<u32>),
+    ChildrenExited {
+        pid: u32,
+        children: Vec<u32>,
+    },
     /// All descendants have exited (root may still be alive).
-    AllChildrenGone,
+    AllChildrenGone {
+        pid: u32,
+    },
     /// The root process itself has exited.
-    RootExited { pid: u32 },
+    RootExited {
+        pid: u32,
+    },
+    WorkComplete {
+        pid: u32,
+    },
 }
 
 /// One-shot queries callers can send to read tracker state synchronously.
@@ -54,7 +68,7 @@ pub enum ProcessTrackerQuery {
 // Public data types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ProcessState {
     Running,
     Sleeping,
@@ -84,7 +98,7 @@ impl std::fmt::Display for ProcessState {
 }
 
 #[cfg(target_os = "linux")]
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub enum FDType {
     File,
     Socket,

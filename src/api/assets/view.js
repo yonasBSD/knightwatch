@@ -244,8 +244,21 @@ function refreshScreenshots() {
 
 // ── Process refresh ────────────────────────────────────────────────
 
+const detailsOpenState = new Set();
+
 async function refreshProcess() {
   try {
+    const existingDetails = rootSection.querySelectorAll("details.children-group");
+    existingDetails.forEach(details => {
+      if (details.dataset.pid) {
+        if (details.open) {
+          detailsOpenState.add(details.dataset.pid);
+        } else {
+          detailsOpenState.delete(details.dataset.pid);
+        }
+      }
+    });
+
     const rIds = await fetch("/root_pids");
     if (!rIds.ok) throw new Error("HTTP error");
     const pids = await rIds.json();
@@ -276,8 +289,9 @@ async function refreshProcess() {
         }
 
         if (data.child_count > 0) {
+          const isOpen = detailsOpenState.has(String(pid)) ? "open" : "";
           rootsHtml += `
-            <details class="children-group" style="margin-top: 0.5rem; margin-left: 0.75rem;">
+            <details class="children-group" data-pid="${pid}" ${isOpen} style="margin-top: 0.5rem; margin-left: 0.75rem;">
               <summary class="section-header" style="margin-top: 0; cursor: pointer; user-select: none;">
                 Children <span class="count-badge">${data.child_count}</span>
                 <span class="muted" style="margin-left:auto; font-size: 0.7rem; font-weight: normal;">(click to toggle)</span>

@@ -22,7 +22,7 @@ pub struct IOStats {
 }
 
 /// Lightweight per-process data captured each tick.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProcessSnapshot {
     pub pid: u32,
     pub name: String,

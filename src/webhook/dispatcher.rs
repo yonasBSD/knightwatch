@@ -2,7 +2,7 @@ use reqwest::Client;
 use tokio_util::sync::CancellationToken;
 
 use super::structs::WebhookPayload;
-use crate::{prelude::*, process_tracker::enums::ProcessTrackerEvent};
+use crate::prelude::*;
 
 pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) {
     let Some(mut rx) = crate::process_tracker::subscribe_events() else {
@@ -24,7 +24,7 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
                 }
             }
         };
-        let payload = event_to_payload(&event);
+        let payload = WebhookPayload::from(&event);
         for url in &urls {
             fire_with_retry(&client, url, &payload, &cancel_token).await;
         }
@@ -65,41 +65,5 @@ async fn fire_with_retry(
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(2u64.pow(attempts))) => {}
         }
-    }
-}
-
-fn event_to_payload(event: &ProcessTrackerEvent) -> WebhookPayload {
-    let (name, data) = match event {
-        ProcessTrackerEvent::RootExited { pid } => {
-            ("process.root_exited", serde_json::json!({ "pid": pid }))
-        }
-        ProcessTrackerEvent::ChildrenExited { pid, children } => (
-            "process.children_exited",
-            serde_json::json!({ "pid": pid, "children": children }),
-        ),
-        ProcessTrackerEvent::ChildrenAppeared { pid, children } => (
-            "process.children_appeared",
-            serde_json::json!({ "pid": pid, "children": children }),
-        ),
-        ProcessTrackerEvent::AllChildrenGone { pid } => (
-            "process.all_children_gone",
-            serde_json::json!({ "pid": pid }),
-        ),
-        ProcessTrackerEvent::InitialSnapshot { root, children } => (
-            "process.initial_snapshot",
-            serde_json::json!({
-                "root_pid": root.pid,
-                "child_count": children.len()
-            }),
-        ),
-        ProcessTrackerEvent::WorkComplete { pid } => {
-            ("process.work_complete", serde_json::json!({ "pid": pid }))
-        }
-    };
-    WebhookPayload {
-        version: env!("CARGO_PKG_VERSION"),
-        event: name,
-        timestamp: crate::utils::now_rfc3339(),
-        data,
     }
 }

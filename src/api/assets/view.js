@@ -125,7 +125,7 @@ function buildCard(proc, isRoot = false) {
 
   const hasIO = proc.io_stats != null;
   const hasCwd = proc.cwd != null;
-  const hasFds = proc.open_fds != null;
+  const hasFds = proc.open_files != null;
 
   if (hasCwd || hasFds || hasIO) {
     linuxExtras += `<div class="proc-meta proc-meta-linux">`;
@@ -134,7 +134,7 @@ function buildCard(proc, isRoot = false) {
         "CWD",
         `<span title="${proc.cwd}">${proc.cwd}</span>`,
       );
-    if (hasFds) linuxExtras += metaItem("FDs", proc.open_fds);
+    if (hasFds) linuxExtras += metaItem("FDs", proc.open_files.length);
     if (hasIO) {
       linuxExtras += metaItem("READ", fmtBytes(proc.io_stats.read_bytes));
       linuxExtras += metaItem("WRITE", fmtBytes(proc.io_stats.write_bytes));
@@ -180,7 +180,7 @@ function buildCard(proc, isRoot = false) {
       <div class="proc-meta">
         ${metaItem("PID", proc.pid)}
         ${metaItem("CPU", proc.cpu_usage.toFixed(1) + "%")}
-        ${metaItem("MEM", proc.memory_human)}
+        ${metaItem("MEM", formatBytes(proc.memory_bytes))}
       </div>
       ${linuxExtras}
     </div>`;

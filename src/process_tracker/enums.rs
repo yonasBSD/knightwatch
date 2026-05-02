@@ -1,4 +1,3 @@
-use serde::Serialize;
 use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
@@ -64,11 +63,7 @@ pub enum ProcessTrackerQuery {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Public data types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProcessState {
     Running,
     Sleeping,
@@ -98,7 +93,7 @@ impl std::fmt::Display for ProcessState {
 }
 
 #[cfg(target_os = "linux")]
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, serde::Serialize, Clone)]
 pub enum FDType {
     File,
     Socket,

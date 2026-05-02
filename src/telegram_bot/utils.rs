@@ -1,6 +1,6 @@
 use super::models::TelegramDisplay;
 use crate::{
-    process_tracker::{enums::ProcessTrackerEvent, structs::ProcessInfo},
+    process_tracker::enums::ProcessTrackerEvent,
     system_monitor::enums::{BatteryState, SystemMonitorEvent},
 };
 
@@ -11,14 +11,14 @@ const SPECIAL: &[char] = &[
 pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
     match event {
         ProcessTrackerEvent::InitialSnapshot { root, children } => {
-            let root_info = TelegramDisplay(&ProcessInfo::from(root));
+            let root_info = TelegramDisplay(root);
             let mut msg = format!("🟢 *Initial Snapshot*\n\n*Root:*\n{root_info}");
             if children.is_empty() {
                 msg.push_str("\n\n*Children:* _none_");
             } else {
                 msg.push_str(&format!("\n\n*Children* ({}):", children.len()));
                 for child in children {
-                    let child_info = TelegramDisplay(&ProcessInfo::from(child));
+                    let child_info = TelegramDisplay(child);
                     msg.push_str(&format!("\n{child_info}\n"));
                 }
             }
@@ -30,7 +30,7 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
                 children.len()
             );
             for child in children {
-                let info = TelegramDisplay(&ProcessInfo::from(child));
+                let info = TelegramDisplay(child);
                 msg.push_str(&format!("\n{info}\n"));
             }
             msg

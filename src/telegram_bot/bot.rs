@@ -226,16 +226,16 @@ async fn handle_screenshot(bot: Bot, msg: Message) -> Result<()> {
 
 async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
     for root_pid in process_tracker::get_root_pids().await {
-        let (root_snap, children_snaps, work_done) = tokio::join!(
+        let (root, children, work_done) = tokio::join!(
             process_tracker::get_root(root_pid),
             process_tracker::get_children(root_pid),
             process_tracker::is_work_done(root_pid),
         );
-        let child_count = children_snaps.len();
+        let child_count = children.len();
         let process_tree_snapshot =
             super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
-                root: root_snap.map(Into::into),
-                children: children_snaps.into_iter().map(Into::into).collect(),
+                root,
+                children,
                 child_count,
                 work_done,
                 timestamp: crate::utils::now_rfc3339(),
@@ -249,16 +249,16 @@ async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
 
 async fn handle_system_monitor(bot: Bot, msg: Message) -> Result<()> {
     for root_pid in process_tracker::get_root_pids().await {
-        let (root_snap, children_snaps, work_done) = tokio::join!(
+        let (root, children, work_done) = tokio::join!(
             process_tracker::get_root(root_pid),
             process_tracker::get_children(root_pid),
             process_tracker::is_work_done(root_pid),
         );
-        let child_count = children_snaps.len();
+        let child_count = children.len();
         let process_tree_snapshot =
             super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
-                root: root_snap.map(Into::into),
-                children: children_snaps.into_iter().map(Into::into).collect(),
+                root,
+                children,
                 child_count,
                 work_done,
                 timestamp: crate::utils::now_rfc3339(),
@@ -306,7 +306,7 @@ async fn handle_top_processes_by(
     }
     let body = snapshots
         .iter()
-        .map(|s| TelegramDisplay(&process_tracker::structs::ProcessInfo::from(s)).to_string())
+        .map(|s| TelegramDisplay(s).to_string())
         .collect::<Vec<_>>()
         .join("\n\n");
     let header = format!("📊 Top Processes by {label}\n\n");

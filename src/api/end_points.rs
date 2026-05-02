@@ -17,7 +17,6 @@ use crate::{
 pub async fn shutdown(
     State(cancel_token): State<tokio_util::sync::CancellationToken>,
 ) -> &'static str {
-    println!("a");
     cancel_token.cancel();
     "Shutting down…"
 }
@@ -123,16 +122,16 @@ pub async fn root_pids() -> Json<Vec<u32>> {
 /// Returns the full process tree of a given root pid: root + all live descendants, plus a
 /// `work_done` flag. Useful for dashboards or external orchestration.
 pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
-    let (root_snap, children_snaps, work_done) = tokio::join!(
+    let (root, children, work_done) = tokio::join!(
         process_tracker::get_root(root_pid),
         process_tracker::get_children(root_pid),
         process_tracker::is_work_done(root_pid),
     );
 
-    let child_count = children_snaps.len();
+    let child_count = children.len();
     Json(ProcessTree {
-        root: root_snap.map(Into::into),
-        children: children_snaps.into_iter().map(Into::into).collect(),
+        root,
+        children,
         child_count,
         work_done,
         timestamp: now_rfc3339(),
@@ -144,9 +143,9 @@ pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
 /// Returns only the root process snapshot of a given root pid, or 404 if it has exited.
 pub async fn process_root(
     Path(root_pid): Path<u32>,
-) -> Result<Json<ProcessInfo>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ProcessSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     match process_tracker::get_root(root_pid).await {
-        Some(snap) => Ok(Json(ProcessInfo::from(snap))),
+        Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -160,9 +159,9 @@ pub async fn process_root(
 /// `GET /process/children/{pid}`
 ///
 /// Returns snapshots of all currently live child processes of a given root pid.
-pub async fn process_children(Path(root_pid): Path<u32>) -> Json<Vec<ProcessInfo>> {
+pub async fn process_children(Path(root_pid): Path<u32>) -> Json<Vec<ProcessSnapshot>> {
     let children = process_tracker::get_children(root_pid).await;
-    Json(children.into_iter().map(Into::into).collect())
+    Json(children)
 }
 
 /// `GET /process/status/{pid}`
@@ -198,7 +197,7 @@ pub async fn process_status(Path(root_pid): Path<u32>) -> Json<ProcessStatus> {
 /// - `400 Bad Request` if `sort` is not a valid sort key
 pub async fn top_processes(
     Query(params): Query<TopProcessesParams>,
-) -> Result<Json<Vec<ProcessInfo>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<Vec<ProcessSnapshot>>, (StatusCode, Json<ErrorResponse>)> {
     let limit = params.limit.unwrap_or(0);
     let sort_key = process_tracker::enums::SortKey::try_from(params.sort).map_err(|e| {
         (
@@ -209,11 +208,7 @@ pub async fn top_processes(
             }),
         )
     })?;
-    let top_processes: Vec<ProcessInfo> = process_tracker::get_top_processes(sort_key, limit)
-        .await
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    let top_processes = process_tracker::get_top_processes(sort_key, limit).await;
     Ok(Json(top_processes))
 }
 

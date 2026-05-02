@@ -28,7 +28,9 @@ pub enum Command {
 
 pub struct TelegramDisplay<'a, T>(pub &'a T);
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::structs::ProcessInfo> {
+impl<'a> std::fmt::Display
+    for TelegramDisplay<'a, crate::process_tracker::structs::ProcessSnapshot>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
         write!(
@@ -36,16 +38,16 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::struc
             "🔹 *{name}* `\\(PID {pid}\\)`\n   ├ State: `{state}`\n   ├ CPU: `{cpu:.1}%`\n   └ Mem: `{mem}`",
             pid = s.pid,
             name = escape_mdv2(&s.name),
-            state = escape_mdv2(&s.state),
+            state = escape_mdv2(&s.state.to_string()),
             cpu = s.cpu_usage,
-            mem = escape_mdv2(&s.memory_human),
+            mem = escape_mdv2(&format_bytes(s.memory_bytes)),
         )?;
         #[cfg(target_os = "linux")]
         {
             if let Some(cwd) = &s.cwd {
                 write!(f, "\n   ├ CWD: `{}`", escape_mdv2(cwd))?;
             }
-            write!(f, "\n   ├ FDs: `{}`", s.open_fds)?;
+            write!(f, "\n   ├ FDs: `{}`", s.open_files.len())?;
             if let Some(io) = &s.io_stats {
                 write!(
                     f,

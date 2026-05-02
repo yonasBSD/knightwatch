@@ -1,12 +1,12 @@
 # 🖥️ Knightwatch
 
-A lightweight, real-time browser-based dashboard for monitoring live screenshots and process activity on a remote or local machine.
+A lightweight, real-time browser-based dashboard for monitoring system performance, live screenshots and process activity on a remote or local machine.
 
 ---
 
 ## Overview
 
-Knightwatch provides a sleek dark-mode web interface that streams live screen captures and process telemetry directly in your browser. The backend is a Rust server built on [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum), keeping the footprint small and performance high — no heavy agents or desktop apps required. It's designed for quick visual oversight of a running system, whether you're monitoring a headless server, a build machine, or a long-running automation task.
+Knightwatch provides a sleek dark-mode web interface that streams system performance, live screen captures and process telemetry directly in your browser. The backend is a Rust server built on [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum), keeping the footprint small and performance high — no heavy agents or desktop apps required. It's designed for quick visual oversight of a running system, whether you're monitoring a headless server, a build machine, or a long-running automation task.
 
 ---
 
@@ -17,8 +17,9 @@ Knightwatch provides a sleek dark-mode web interface that streams live screen ca
 - **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
 - **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
 - **Linux Extended Telemetry** — On Linux, child process snapshots include working directory, command line, open file descriptors, and I/O stats
-- **Telegram Bot** — Optional bot for remote monitoring and push notifications on process events
-- **Webhook Dispatcher** — POST process events to one or more URLs with automatic retry
+- **System Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
+- **Telegram Bot** — Optional bot for remote monitoring and push notifications on process and system events
+- **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 - **Structured Logging** — Tracing via `tracing-subscriber` with configurable log levels via `RUST_LOG`
 
 ---
@@ -31,13 +32,23 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 | --- | --- | --- |
 | `GET /` | GET | Serves the self-contained `view.html` dashboard |
 | `GET /health` | GET | Returns server status, version, and uptime |
+| `GET /config` | GET | Returns server config |
 | `GET /screenshot` | GET | Returns a JSON array of base64-encoded PNG screen captures |
 | `GET /root_pids` | GET | Returns a list of pids being tracked |
 | `GET /process/<PID>` | GET | Returns root process info, child processes, CPU/memory stats, and `work_done` flag |
 | `GET /process/root/<PID>` | GET | Returns only the root process snapshot, or 404 if it has exited |
 | `GET /process/children/<PID>` | GET | Returns snapshots of all currently live child processes |
 | `GET /process/status/<PID>` | GET | Lightweight summary — root alive/dead, child count, and `work_done` flag |
-| `GET /top-processes` | GET | Returns the top N processes sorted by the given key. |
+| `GET /top-processes` | GET | Returns the top N processes sorted by the given key |
+| `GET /system` | GET | Returns the full system snapshot (CPU, memory, disks, network, battery, thermals, health) |
+| `GET /cpu` | GET | Returns the current CPU snapshot only |
+| `GET /memory` | GET | Returns the current memory snapshot only |
+| `GET /disks` | GET | Returns per-disk snapshots |
+| `GET /networks` | GET | Returns per-network-interface snapshots |
+| `GET /gpus` | GET | Returns GPU snapshots (empty if no supported GPU detected) |
+| `GET /battery` | GET | Returns the battery snapshot, or 404 if no battery present |
+| `GET /host-info` | GET | Returns static host information (hostname, OS, kernel, arch, uptime) |
+| `GET /temperatures` | GET | Returns thermal sensor readings |
 | `POST /shutdown` | POST | Gracefully shuts down the server |
 
 ### Expected Response Shapes
@@ -59,6 +70,12 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
   ],
   "count": 1
 }
+```
+
+**`/root_pids`**
+
+```json
+[123, 12345]
 ```
 
 **`/process/1234`**
@@ -83,7 +100,7 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 
 Returns a single `ProcessInfo` object, or `404` if the root process has exited.
 
-**`/process/status`**
+**`/process/status/1234`**
 
 ```json
 {
@@ -107,6 +124,19 @@ Returns a single `ProcessInfo` object, or `404` if the root process has exited.
 }
 ```
 
+**`/config`**
+
+```json
+{
+  "blind": false,
+  "pid": [],
+  "top_processes": false,
+  "limit_processes": 5,
+  "telegram_bot": false,
+  "system_monitor": false
+}
+```
+
 **`/top-processes?sort=cpu&limit=1`**
 
 ```json
@@ -122,6 +152,80 @@ Returns a single `ProcessInfo` object, or `404` if the root process has exited.
 ```
 
 Process `state` can be `running`, `sleeping`, `gone`, or any other string (rendered as a warning-colored pill).
+
+**`/system`**
+
+```json
+{
+  "timestamp": "2025-01-01T00:00:00Z",
+  "health": "healthy",
+  "cpu": {
+    "usage_percent": 14.2,
+    "brand": "Intel(R) Core(TM) i9-13900K",
+    "frequency_mhz": 3200,
+    "physical_core_count": 24,
+    "cores": [{ "name": "cpu0", "usage_percent": 12.1, "frequency_mhz": 3200 }],
+    "load_avg": { "one": 0.45, "five": 0.60, "fifteen": 0.72 }
+  },
+  "memory": {
+    "total_bytes": 34359738368,
+    "used_bytes": 12884901888,
+    "available_bytes": 21474836480,
+    "free_bytes": 18253611008,
+    "used_percent": 37.5,
+    "swap_total_bytes": 4294967296,
+    "swap_used_bytes": 0,
+    "swap_free_bytes": 4294967296,
+    "swap_used_percent": 0.0
+  },
+  "disks": [
+    {
+      "name": "/dev/sda1",
+      "mount_point": "/",
+      "file_system": "ext4",
+      "kind": "Ssd",
+      "is_removable": false,
+      "total_bytes": 500107862016,
+      "used_bytes": 120259084288,
+      "available_bytes": 379848777728,
+      "used_percent": 24.0
+    }
+  ],
+  "networks": [
+    {
+      "interface": "eth0",
+      "rx_bytes_per_sec": 2048,
+      "tx_bytes_per_sec": 512,
+      "rx_total_bytes": 1073741824,
+      "tx_total_bytes": 536870912,
+      "rx_packets_per_sec": 4,
+      "tx_packets_per_sec": 2,
+      "rx_errors": 0,
+      "tx_errors": 0
+    }
+  ],
+  "gpus": [],
+  "battery": null,
+  "temperatures": [
+    {
+      "label": "coretemp Package id 0",
+      "temperature_celsius": 52.0,
+      "temperature_max_celsius": 71.0,
+      "temperature_critical_celsius": 100.0
+    }
+  ],
+  "host": {
+    "hostname": "my-machine",
+    "os_name": "Ubuntu 24.04.1 LTS",
+    "kernel_version": "6.8.0-40-generic",
+    "cpu_arch": "x86_64",
+    "uptime_secs": 86400,
+    "process_count": 312
+  }
+}
+```
+
+`health` can be `healthy`, `warning`, or `critical`. Individual sub-endpoints (`/cpu`, `/memory`, `/disks`, `/networks`, `/gpus`, `/battery`, `/host-info`, `/temperatures`) return their respective nested objects directly.
 
 ---
 
@@ -144,6 +248,7 @@ Pass the PID of the root process you want to monitor. The server will start on `
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
 | `--no-server` | `false` | Disable the API server entirely |
 | `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
+| `--system-monitor` | `false` | Enable the system monitor (CPU, memory, disks, network, battery, thermals) |
 | `--telegram` | `false` | Enable the Telegram bot |
 | `--with-webhook` | `false` | Enable webhook dispatching |
 | `--webhook <URL>` | — | Webhook URL to POST process events to (repeatable) |
@@ -160,6 +265,12 @@ To run without screen capture (e.g. on a headless server or where permissions ar
 
 ```bash
 knightwatch --pid <PID> --blind
+```
+
+To enable the system monitor:
+
+```bash
+knightwatch --pid <PID> --system-monitor
 ```
 
 To enable webhook dispatching with one or more targets:
@@ -181,6 +292,35 @@ Set the `RUST_LOG` environment variable to control verbosity:
 ```bash
 RUST_LOG=debug knightwatch --pid <PID>
 ```
+
+---
+
+## System Monitor
+
+When enabled with `--system-monitor`, Knightwatch polls hardware metrics every second and exposes them via the `/system` family of endpoints. It also emits threshold-based events to the Telegram bot and webhook dispatcher.
+
+### Default Thresholds
+
+| Metric | Warning threshold |
+| --- | --- |
+| CPU usage | ≥ 90% |
+| Memory usage | ≥ 90% |
+| Disk usage (per mount) | ≥ 90% |
+| Battery charge | ≤ 15% (discharging only) |
+
+### System Monitor Events
+
+The following events are emitted by the system monitor (see [Webhooks](#webhooks) and [Telegram Bot](#telegram-bot)):
+
+| Event | Description |
+| --- | --- |
+| `systemo.initial_snapshot` | Full snapshot emitted on the first tick |
+| `systemo.tick` | Full snapshot emitted every subsequent tick |
+| `systemo.cpu_threshold_exceeded` | CPU usage crossed the warning threshold |
+| `systemo.memory_threshold_exceeded` | Memory usage crossed the warning threshold |
+| `systemo.disk_threshold_exceeded` | A disk's used percentage crossed the warning threshold |
+| `systemo.battery_low` | Battery is discharging and charge fell below the threshold |
+| `systemo.battery_state_changed` | Battery state changed (e.g. plugged in / unplugged) |
 
 ---
 
@@ -218,7 +358,7 @@ knightwatch --pid <PID> --telegram
 
 ### Capabilities
 
-The bot sends push notifications for all process events:
+The bot sends push notifications for all process events when tracking at least one process:
 
 - 🟢 **Initial snapshot** — root and children when tracking begins
 - 🆕 **Children appeared** — new child processes detected
@@ -226,11 +366,19 @@ The bot sends push notifications for all process events:
 - ✅ **All children gone** — all child processes have exited
 - 💀 **Root process exited** — the root process itself has stopped
 
+When `--system-monitor` is also enabled, the bot additionally sends alerts for:
+
+- ⚠️ **CPU threshold exceeded** — aggregate CPU usage above 90%
+- ⚠️ **Memory threshold exceeded** — memory usage above 90%
+- ⚠️ **Disk threshold exceeded** — a mount point usage above 90%
+- 🔋 **Battery low** — charge below 15% while discharging
+- 🔌 **Battery state changed** — plugged in, unplugged, or full
+
 ---
 
 ## Webhooks
 
-Knightwatch can POST process events to one or more HTTP endpoints. Useful for integrating with external orchestration, alerting, or logging pipelines.
+Knightwatch can POST process and system events to one or more HTTP endpoints. Useful for integrating with external orchestration, alerting, or logging pipelines.
 
 ### Usage
 
@@ -255,7 +403,7 @@ Webhook URLs can also be stored in persistent config (merged with any provided v
 }
 ```
 
-**Event names:**
+**Process event names:**
 
 | Event | Description |
 | --- | --- |
@@ -264,6 +412,19 @@ Webhook URLs can also be stored in persistent config (merged with any provided v
 | `process.children_exited` | One or more children exited |
 | `process.all_children_gone` | All children have exited |
 | `process.root_exited` | Root process exited |
+| `process.work_complete` | Work-done condition met |
+
+**System monitor event names** (requires `--system-monitor`):
+
+| Event | Description | Key `data` fields |
+| --- | --- | --- |
+| `systemo.initial_snapshot` | First hardware snapshot | `snapshot` |
+| `systemo.tick` | Periodic hardware snapshot | `snapshot` |
+| `systemo.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
+| `systemo.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
+| `systemo.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
+| `systemo.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
+| `systemo.battery_state_changed` | Battery state changed | `state` |
 
 Failed deliveries are retried up to 3 times with exponential backoff.
 

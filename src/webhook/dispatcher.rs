@@ -2,29 +2,29 @@ use reqwest::Client;
 use tokio_util::sync::CancellationToken;
 
 use super::structs::WebhookPayload;
-use crate::prelude::*;
+use crate::{prelude::*, utils::recv_or_pending};
 
 pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) {
-    let Some(mut rx) = crate::process_tracker::subscribe_events() else {
+    let mut process_tracker_rx = crate::process_tracker::subscribe_events();
+    let mut system_monitor_rx = crate::system_monitor::subscribe_events();
+    if process_tracker_rx.is_none() && system_monitor_rx.is_none() {
         return;
-    };
+    }
     let client = Client::new();
     loop {
-        let event = tokio::select! {
+        let payload = tokio::select! {
             biased;
             _ = cancel_token.cancelled() => {
                 info!("webhook: dispatcher shutting down");
                 return;
             }
-            result = rx.recv() => match result {
-                Ok(e) => e,
-                Err(err) => {
-                    error!("webhook: event channel error: {err}");
-                    continue;
-                }
+            e = recv_or_pending(&mut process_tracker_rx, "webhook: process tracker") => {
+                WebhookPayload::from(&e)
+            }
+            e = recv_or_pending(&mut system_monitor_rx, "webhook: system monitor") => {
+                WebhookPayload::from(&e)
             }
         };
-        let payload = WebhookPayload::from(&event);
         for url in &urls {
             fire_with_retry(&client, url, &payload, &cancel_token).await;
         }

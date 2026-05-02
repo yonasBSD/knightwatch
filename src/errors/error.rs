@@ -7,6 +7,7 @@ pub enum Error {
     Screen(String),
     Config(String),
     ProcessTracker(String),
+    SystemMonitor(String),
     Other(String),
     TelegramBot(String),
 }
@@ -25,6 +26,7 @@ impl std::fmt::Display for Error {
             | Error::Config(msg)
             | Error::Network(msg)
             | Error::TelegramBot(msg)
+            | Error::SystemMonitor(msg)
             | Error::ProcessTracker(msg) => {
                 write!(f, "{msg}")
             }

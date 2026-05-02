@@ -98,7 +98,7 @@ pub struct ProcessInfo {
 impl From<&ProcessSnapshot> for ProcessInfo {
     fn from(s: &ProcessSnapshot) -> Self {
         Self {
-            memory_human: super::utils::format_memory(s.memory_bytes),
+            memory_human: crate::utils::format_bytes(s.memory_bytes),
             pid: s.pid,
             name: s.name.clone(),
             state: s.state.to_string(),

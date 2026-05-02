@@ -200,6 +200,8 @@ header h2 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
   gap: 1.5rem;
+  flex: 1;
+  align-content: start;
 }
 @media (max-width: 768px) {
   #screens {
@@ -494,6 +496,232 @@ header h2 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── System Panel ────────────────────────────────────── */
+#system-panel {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#system-panel-inner {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  min-width: max-content;
+  height: 100%;
+}
+
+.sys-section {
+  padding: 0.85rem 1.1rem;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.sys-section:last-child {
+  border-right: none;
+}
+
+.sys-section-title {
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  margin-bottom: 0.1rem;
+}
+
+.sys-grid {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  column-gap: 1.1rem;
+  row-gap: 0.2rem;
+  align-items: start;
+}
+
+.sys-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.sys-kv .sk {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sys-kv .sv {
+  font-size: 0.82rem;
+  color: #e4e4e7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+}
+.sys-kv .sv.health-healthy {
+  color: var(--success);
+}
+.sys-kv .sv.health-warning {
+  color: var(--warning);
+}
+.sys-kv .sv.health-critical {
+  color: var(--error);
+}
+
+/* Usage bar */
+.sys-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.sys-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.sys-bar-label {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 2.5rem;
+}
+.sys-bar-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 60px;
+}
+.sys-bar-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.5s ease;
+  background: var(--accent);
+}
+.sys-bar-fill.warn {
+  background: var(--warning);
+}
+.sys-bar-fill.crit {
+  background: var(--error);
+}
+.sys-bar-val {
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #e4e4e7;
+  min-width: 2.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* CPU cores row */
+.sys-cores-row {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  height: 28px;
+}
+.sys-core-bar {
+  width: 5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  min-height: 2px;
+  transition: height 0.4s ease;
+  flex-shrink: 0;
+}
+
+/* Disk / net items */
+.sys-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 180px;
+}
+.sys-item + .sys-item {
+  border-top: 1px solid var(--border);
+  padding-top: 0.4rem;
+  margin-top: 0.2rem;
+}
+.sys-item-name {
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #d4d4d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.sys-item-sub {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Thermal chips */
+.sys-thermal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.sys-thermal-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+}
+.sys-thermal-label {
+  color: var(--text-muted);
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sys-thermal-val {
+  color: #e4e4e7;
+  font-weight: 700;
+}
+.sys-thermal-val.crit {
+  color: var(--error);
+}
+.sys-thermal-val.warn {
+  color: var(--warning);
+}
+
+/* Net RX/TX badges */
+.sys-net-io {
+  display: flex;
+  gap: 0.75rem;
+}
+.sys-net-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.sys-net-badge .dir {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.sys-net-badge .bw {
+  color: #e4e4e7;
 }
 
 /* Scrollbar */

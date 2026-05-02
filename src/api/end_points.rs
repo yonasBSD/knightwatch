@@ -9,16 +9,15 @@ use std::time::SystemTime;
 
 use super::{constants::*, models::*};
 use crate::{
-    process_tracker::{
-        self,
-        structs::{ProcessInfo, ProcessStatus, ProcessTree},
-    },
+    process_tracker::{self, structs::*},
+    system_monitor::{self, structs::*},
     utils::now_rfc3339,
 };
 
 pub async fn shutdown(
     State(cancel_token): State<tokio_util::sync::CancellationToken>,
 ) -> &'static str {
+    println!("a");
     cancel_token.cancel();
     "Shutting down…"
 }
@@ -45,6 +44,7 @@ pub async fn config() -> Json<ConfigResponse> {
         top_processes: args.top_processes,
         limit_processes: args.limit_processes,
         telegram_bot: args.telegram,
+        system_monitor: args.system_monitor,
     })
 }
 
@@ -215,4 +215,117 @@ pub async fn top_processes(
         .map(Into::into)
         .collect();
     Ok(Json(top_processes))
+}
+
+// ---------------------------------------------------------------------------
+// System Monitor endpoints
+// ---------------------------------------------------------------------------
+
+/// `GET /system`
+///
+/// Returns the current System Snapshot.
+pub async fn system_snapshot() -> Result<Json<SystemSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_monitor::get_snapshot().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No System Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /cpu`
+///
+/// Returns the current Cpu Snapshot.
+pub async fn cpu_snapshot() -> Result<Json<CpuSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_monitor::get_cpu().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No Cpu Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /memory`
+///
+/// Returns the current Memory Snapshot.
+pub async fn memory_snapshot() -> Result<Json<MemorySnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_monitor::get_memory().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No Memory Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /disks`
+///
+/// Returns the Disks Snapshots.
+pub async fn disks_snapshots() -> Json<Vec<DiskSnapshot>> {
+    Json(system_monitor::get_disks().await)
+}
+
+/// `GET /networks`
+///
+/// Returns the Networks Snapshots.
+pub async fn networks_snapshot() -> Json<Vec<NetworkSnapshot>> {
+    Json(system_monitor::get_networks().await)
+}
+
+/// `GET /gpus`
+///
+/// Returns the Gpus Snapshots.
+pub async fn gpus_snapshots() -> Json<Vec<GpuSnapshot>> {
+    Json(system_monitor::get_gpus().await)
+}
+
+/// `GET /battery`
+///
+/// Returns the current Battery Snapshot.
+pub async fn battery_snapshot() -> Result<Json<BatterySnapshot>, (StatusCode, Json<ErrorResponse>)>
+{
+    match system_monitor::get_battery().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No battery Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /host-info`
+///
+/// Returns the current Host Info Snapshot.
+pub async fn host_info_snapshot() -> Result<Json<HostInfo>, (StatusCode, Json<ErrorResponse>)> {
+    match system_monitor::get_host_info().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No host info was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /temperatures`
+///
+/// Returns the Temperatures Snapshots.
+pub async fn temperatures_snapshots() -> Json<Vec<ThermalSnapshot>> {
+    Json(system_monitor::get_temperatures().await)
 }

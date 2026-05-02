@@ -1,11 +1,14 @@
 use super::models::TelegramDisplay;
-use crate::process_tracker::{enums::ProcessTrackerEvent, structs::ProcessInfo};
+use crate::{
+    process_tracker::{enums::ProcessTrackerEvent, structs::ProcessInfo},
+    system_monitor::enums::{BatteryState, SystemMonitorEvent},
+};
 
 const SPECIAL: &[char] = &[
     '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\',
 ];
 
-pub fn format_event(event: &ProcessTrackerEvent) -> String {
+pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
     match event {
         ProcessTrackerEvent::InitialSnapshot { root, children } => {
             let root_info = TelegramDisplay(&ProcessInfo::from(root));
@@ -50,6 +53,62 @@ pub fn format_event(event: &ProcessTrackerEvent) -> String {
         }
         ProcessTrackerEvent::WorkComplete { pid } => {
             format!("✅ *Work Complete*\nPID: `{pid}`")
+        }
+    }
+}
+
+pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String> {
+    match event {
+        SystemMonitorEvent::InitialSnapshot { snapshot } => {
+            let display = TelegramDisplay(snapshot);
+            Some(format!("🟢 *System Monitor Started*\n\n{display}"))
+        }
+        SystemMonitorEvent::Tick { .. } => None,
+        SystemMonitorEvent::CpuThresholdExceeded {
+            usage_percent,
+            threshold,
+        } => Some(format!(
+            "⚠️ *CPU Threshold Exceeded*\n\
+                 ├ Usage: `{usage_percent:.1}%`\n\
+                 └ Threshold: `{threshold:.1}%`"
+        )),
+        SystemMonitorEvent::MemoryThresholdExceeded {
+            used_percent,
+            threshold,
+        } => Some(format!(
+            "⚠️ *Memory Threshold Exceeded*\n\
+                 ├ Usage: `{used_percent:.1}%`\n\
+                 └ Threshold: `{threshold:.1}%`"
+        )),
+        SystemMonitorEvent::DiskThresholdExceeded {
+            mount_point,
+            used_percent,
+            threshold,
+        } => Some(format!(
+            "⚠️ *Disk Threshold Exceeded*\n\
+                 ├ Mount: `{mount}`\n\
+                 ├ Usage: `{used_percent:.1}%`\n\
+                 └ Threshold: `{threshold:.1}%`",
+            mount = escape_mdv2(mount_point),
+        )),
+        SystemMonitorEvent::BatteryLow {
+            charge_percent,
+            threshold,
+        } => Some(format!(
+            "🪫 *Battery Low*\n\
+                 ├ Charge: `{charge_percent:.1}%`\n\
+                 └ Threshold: `{threshold:.1}%`"
+        )),
+        SystemMonitorEvent::BatteryStateChanged { state } => {
+            let (emoji, label) = match state {
+                BatteryState::Charging => ("⚡", "Charging"),
+                BatteryState::Discharging => ("🔋", "Discharging"),
+                BatteryState::Full => ("✅", "Full"),
+                _ => ("🔌", "Unknown"),
+            };
+            Some(format!(
+                "{emoji} *Battery State Changed*\n└ State: `{label}`"
+            ))
         }
     }
 }

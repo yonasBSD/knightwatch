@@ -1,18 +1,6 @@
 #[cfg(target_os = "linux")]
 use procfs::process::{FDTarget, Process};
 
-pub fn format_memory(bytes: u64) -> String {
-    const MB: u64 = 1024 * 1024;
-    const KB: u64 = 1024;
-    if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
 // Linux-only helper functions
 #[cfg(target_os = "linux")]
 pub fn collect_file_descriptors(pid: u32) -> Vec<super::structs::FileDescriptorInfo> {

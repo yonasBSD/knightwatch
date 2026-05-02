@@ -20,12 +20,22 @@ fn create_router(cancel_token: CancellationToken) -> Router {
         .route("/view.css", get(view_css))
         .route("/view.js", get(view_js))
         // ── Process tracking ──────────────────────────────────────────────
-        .route("/root_pids", get(root_pids)) // full tree
+        .route("/root_pids", get(root_pids)) // root pids
         .route("/process/{root_pid}", get(process_tree)) // full tree
         .route("/process/root/{root_pid}", get(process_root)) // root only
         .route("/process/children/{root_pid}", get(process_children)) // children only
         .route("/process/status/{root_pid}", get(process_status)) // lightweight summary
         .route("/top-processes", get(top_processes)) // top processes
+        // ── System Monitoring ──────────────────────────────────────────────
+        .route("/system", get(system_snapshot)) // full system snapshot
+        .route("/cpu", get(cpu_snapshot)) // cpu snapshot
+        .route("/memory", get(memory_snapshot)) // memory snapshot
+        .route("/disks", get(disks_snapshots)) // disks snapshot
+        .route("/networks", get(networks_snapshot)) // networks snapshot
+        .route("/gpus", get(gpus_snapshots)) // gpus snapshot
+        .route("/battery", get(battery_snapshot)) // battery snapshot
+        .route("/host-info", get(host_info_snapshot)) // host info snapshot
+        .route("/temperatures", get(temperatures_snapshots)) // temperatures snapshot
         .with_state(cancel_token)
 }
 

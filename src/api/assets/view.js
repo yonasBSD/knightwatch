@@ -8,6 +8,7 @@ const topProcessesSection = document.getElementById("top-processes-section");
 const topSortSelect = document.getElementById("top-sort-select");
 const topLimitInput = document.getElementById("top-limit-input");
 const telegramIndicator = document.getElementById("telegram-indicator");
+const systemPanel = document.getElementById("system-panel");
 
 // ── Config ─────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ async function loadConfig() {
       top_processes: false,
       limit_processes: 5,
       telegram_bot: false,
+      system_monitor: false,
     };
   }
 
@@ -63,6 +65,10 @@ async function loadConfig() {
     if (parseInt(topLimitInput.value) > config.limit_processes) {
       topLimitInput.value = config.limit_processes;
     }
+  }
+
+  if (!config.system_monitor) {
+    systemPanel.style.display = "none";
   }
 }
 
@@ -248,8 +254,10 @@ const detailsOpenState = new Set();
 
 async function refreshProcess() {
   try {
-    const existingDetails = rootSection.querySelectorAll("details.children-group");
-    existingDetails.forEach(details => {
+    const existingDetails = rootSection.querySelectorAll(
+      "details.children-group",
+    );
+    existingDetails.forEach((details) => {
       if (details.dataset.pid) {
         if (details.open) {
           detailsOpenState.add(details.dataset.pid);
@@ -358,11 +366,250 @@ document.getElementById("shutdown-btn").addEventListener("click", () => {
     });
 });
 
-// ── Boot ───────────────────────────────────────────────────────────
+// ── System helpers (mirrors Rust formatting) ───────────────────────
+
+function formatBytes(bytes) {
+  const KB = 1024,
+    MB = KB * 1024,
+    GB = MB * 1024,
+    TB = GB * 1024;
+  if (bytes >= TB) return (bytes / TB).toFixed(1) + " TB";
+  if (bytes >= GB) return (bytes / GB).toFixed(1) + " GB";
+  if (bytes >= MB) return (bytes / MB).toFixed(1) + " MB";
+  if (bytes >= KB) return (bytes / KB).toFixed(1) + " KB";
+  return bytes + " B";
+}
+
+function formatUptime(secs) {
+  const days = Math.floor(secs / 86400);
+  const hours = Math.floor((secs % 86400) / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  return days > 0 ? `${days}d ${hours}h ${mins}m` : `${hours}h ${mins}m`;
+}
+
+// ── System panel rendering ─────────────────────────────────────────
+
+function kv(label, value, cls = "") {
+  return `<div class="sys-kv">
+    <span class="sk">${label}</span>
+    <span class="sv${cls ? " " + cls : ""}">${value ?? "—"}</span>
+  </div>`;
+}
+
+function usageBar(label, pct, extraClass = "") {
+  const fill = pct == null ? 0 : Math.min(100, pct);
+  const colorCls = fill >= 90 ? "crit" : fill >= 75 ? "warn" : "";
+  return `<div class="sys-bar-row">
+    <span class="sys-bar-label">${label}</span>
+    <div class="sys-bar-track"><div class="sys-bar-fill ${colorCls}" style="width:${fill.toFixed(1)}%"></div></div>
+    <span class="sys-bar-val">${fill.toFixed(1)}%</span>
+  </div>`;
+}
+
+function renderSystemSnapshot(snap) {
+  // ── Host ────────────────────────────────────────────────────────
+  const h = snap.host;
+  const healthCls =
+    snap.health === "healthy"
+      ? "health-healthy"
+      : snap.health === "warning"
+        ? "health-warning"
+        : "health-critical";
+  document.getElementById("sys-host-grid").innerHTML = [
+    kv("Hostname", h.hostname),
+    kv("OS", h.os_name),
+    kv("Kernel", h.kernel_version),
+    kv("Arch", h.cpu_arch),
+    kv("Uptime", formatUptime(h.uptime_secs)),
+    kv("Procs", h.process_count),
+    kv("Health", snap.health, healthCls),
+  ].join("");
+
+  // ── CPU ─────────────────────────────────────────────────────────
+  const cpu = snap.cpu;
+  let cpuGridHtml = [
+    kv("Brand", cpu.brand),
+    kv("Cores", cpu.physical_core_count ?? cpu.cores.length),
+    kv("Freq", cpu.frequency_mhz + " MHz"),
+    kv("Usage", cpu.usage_percent.toFixed(1) + "%"),
+  ];
+  if (cpu.load_avg) {
+    cpuGridHtml.push(kv("Load 1m", cpu.load_avg.one.toFixed(2)));
+    cpuGridHtml.push(kv("Load 5m", cpu.load_avg.five.toFixed(2)));
+  }
+  document.getElementById("sys-cpu-grid").innerHTML = cpuGridHtml.join("");
+
+  // Core bars
+  const coresEl = document.getElementById("sys-cpu-cores");
+  const maxH = 28;
+  coresEl.innerHTML = cpu.cores
+    .map((c) => {
+      const h = Math.max(2, (c.usage_percent / 100) * maxH);
+      const col =
+        c.usage_percent >= 90
+          ? "var(--error)"
+          : c.usage_percent >= 75
+            ? "var(--warning)"
+            : "var(--accent)";
+      return `<div class="sys-core-bar" title="${c.name}: ${c.usage_percent.toFixed(1)}%"
+      style="height:${h}px;background:${col}"></div>`;
+    })
+    .join("");
+
+  // ── Memory ──────────────────────────────────────────────────────
+  const mem = snap.memory;
+  document.getElementById("sys-mem-grid").innerHTML = `
+    <div class="sys-bar-wrap" style="grid-column:1/-1">
+      ${usageBar("RAM", mem.used_percent)}
+      ${mem.swap_used_percent != null ? usageBar("SWAP", mem.swap_used_percent) : ""}
+    </div>
+    ${kv("Total", formatBytes(mem.total_bytes))}
+    ${kv("Used", formatBytes(mem.used_bytes))}
+    ${kv("Free", formatBytes(mem.free_bytes))}
+    ${kv("Avail", formatBytes(mem.available_bytes))}
+    ${mem.swap_total_bytes > 0 ? kv("Swap Total", formatBytes(mem.swap_total_bytes)) : ""}
+    ${mem.swap_used_bytes > 0 ? kv("Swap Used", formatBytes(mem.swap_used_bytes)) : ""}
+  `;
+
+  // ── Disks ───────────────────────────────────────────────────────
+  document.getElementById("sys-disk-list").innerHTML = snap.disks
+    .map(
+      (d) => `
+    <div class="sys-item">
+      <span class="sys-item-name" title="${d.name}">${d.mount_point}</span>
+      <span class="sys-item-sub">${d.file_system} · ${d.kind}${d.is_removable ? " · removable" : ""}</span>
+      <div class="sys-bar-track" style="min-width:140px">
+        <div class="sys-bar-fill ${d.used_percent >= 95 ? "crit" : d.used_percent >= 80 ? "warn" : ""}"
+          style="width:${Math.min(100, d.used_percent).toFixed(1)}%"></div>
+      </div>
+      <div style="display:flex;gap:0.75rem">
+        ${kv("Used", formatBytes(d.used_bytes))}
+        ${kv("Free", formatBytes(d.available_bytes))}
+        ${kv("Total", formatBytes(d.total_bytes))}
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+
+  // ── Network ─────────────────────────────────────────────────────
+  const nets = snap.networks.filter(
+    (n) => n.rx_total_bytes > 0 || n.tx_total_bytes > 0,
+  );
+  document.getElementById("sys-net-list").innerHTML =
+    nets.length === 0
+      ? `<span class="sys-item-sub">No active interfaces</span>`
+      : nets
+          .map(
+            (n) => `
+      <div class="sys-item">
+        <span class="sys-item-name">${n.interface}</span>
+        <div class="sys-net-io">
+          <div class="sys-net-badge"><span class="dir">↓</span><span class="bw">${formatBytes(n.rx_bytes_per_sec)}/s</span></div>
+          <div class="sys-net-badge"><span class="dir">↑</span><span class="bw">${formatBytes(n.tx_bytes_per_sec)}/s</span></div>
+        </div>
+        <div style="display:flex;gap:0.75rem">
+          ${kv("RX Total", formatBytes(n.rx_total_bytes))}
+          ${kv("TX Total", formatBytes(n.tx_total_bytes))}
+        </div>
+      </div>
+    `,
+          )
+          .join("");
+
+  // ── GPU ─────────────────────────────────────────────────────────
+  const gpuSection = document.getElementById("sys-gpu-section");
+  if (snap.gpus && snap.gpus.length > 0) {
+    gpuSection.style.display = "";
+    document.getElementById("sys-gpu-list").innerHTML = snap.gpus
+      .map(
+        (g) => `
+      <div class="sys-item">
+        <span class="sys-item-name">${g.name}</span>
+        ${
+          g.usage_percent != null
+            ? `<div class="sys-bar-track" style="min-width:120px">
+          <div class="sys-bar-fill ${g.usage_percent >= 90 ? "crit" : g.usage_percent >= 75 ? "warn" : ""}"
+            style="width:${Math.min(100, g.usage_percent).toFixed(1)}%"></div>
+        </div>`
+            : ""
+        }
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          ${g.usage_percent != null ? kv("Core", g.usage_percent.toFixed(1) + "%") : ""}
+          ${g.vram_used_human != null ? kv("VRAM", g.vram_used_human + " / " + (g.vram_total_human ?? "?")) : ""}
+          ${g.temperature_celsius != null ? kv("Temp", g.temperature_celsius.toFixed(0) + "°C") : ""}
+          ${g.power_draw_watts != null ? kv("Power", g.power_draw_watts.toFixed(0) + "W") : ""}
+          ${g.fan_speed_percent != null ? kv("Fan", g.fan_speed_percent.toFixed(0) + "%") : ""}
+        </div>
+      </div>
+    `,
+      )
+      .join("");
+  } else {
+    gpuSection.style.display = "none";
+  }
+
+  // ── Battery ─────────────────────────────────────────────────────
+  const batSection = document.getElementById("sys-battery-section");
+  if (snap.battery) {
+    batSection.style.display = "";
+    const bat = snap.battery;
+    document.getElementById("sys-battery-grid").innerHTML = `
+      <div class="sys-bar-wrap" style="grid-column:1/-1">
+        ${usageBar("Charge", bat.charge_percent)}
+      </div>
+      ${kv("State", bat.state)}
+      ${bat.time_to_empty_secs != null ? kv("Empty in", formatUptime(bat.time_to_empty_secs)) : ""}
+      ${bat.time_to_full_secs != null ? kv("Full in", formatUptime(bat.time_to_full_secs)) : ""}
+      ${bat.power_draw_watts != null ? kv("Draw", bat.power_draw_watts.toFixed(1) + "W") : ""}
+      ${bat.health_percent != null ? kv("Health", bat.health_percent.toFixed(0) + "%") : ""}
+      ${bat.cycle_count != null ? kv("Cycles", bat.cycle_count) : ""}
+    `;
+  } else {
+    batSection.style.display = "none";
+  }
+
+  // ── Thermals ────────────────────────────────────────────────────
+  const thermalSection = document.getElementById("sys-thermal-section");
+  if (snap.temperatures && snap.temperatures.length > 0) {
+    thermalSection.style.display = "";
+    document.getElementById("sys-thermal-list").innerHTML = snap.temperatures
+      .filter((t) => t.temperature_celsius != null)
+      .map((t) => {
+        const temp = t.temperature_celsius;
+        const crit = t.temperature_critical_celsius;
+        const isCrit = crit != null && temp >= crit;
+        const isWarn = !isCrit && temp >= 80;
+        return `<div class="sys-thermal-chip">
+          <span class="sys-thermal-label" title="${t.label}">${t.label}</span>
+          <span class="sys-thermal-val${isCrit ? " crit" : isWarn ? " warn" : ""}">${temp.toFixed(0)}°C</span>
+          ${crit != null ? `<span class="sys-thermal-label" style="min-width:0">/ ${crit.toFixed(0)}°C</span>` : ""}
+        </div>`;
+      })
+      .join("");
+  } else {
+    thermalSection.style.display = "none";
+  }
+}
+
+// ── System refresh ─────────────────────────────────────────────────
+
+function refreshSystem() {
+  fetch("/system")
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP error");
+      return r.json();
+    })
+    .then((snap) => renderSystemSnapshot(snap))
+    .catch(() => {
+      /* silently skip if endpoint unavailable */
+    });
+}
 
 let screenshotInterval = null;
 let processInterval = null;
 let topInterval = null;
+let systemInterval = null;
 
 loadConfig().then(() => {
   if (!config.blind) {
@@ -378,5 +625,11 @@ loadConfig().then(() => {
     topSortSelect?.addEventListener("change", refreshTopProcesses);
     topLimitInput?.addEventListener("change", refreshTopProcesses);
     topInterval = setInterval(refreshTopProcesses, 2000);
+  }
+
+  // System panel — always enabled; gracefully no-ops if /system is absent
+  if (config.system_monitor) {
+    refreshSystem();
+    systemInterval = setInterval(refreshSystem, 2000);
   }
 });

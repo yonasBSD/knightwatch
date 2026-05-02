@@ -49,6 +49,10 @@ pub struct CliArgs {
     /// Limit number of top processes to track
     #[arg(long, default_value_t = 5)]
     pub limit_processes: usize,
+
+    /// Enable system monitor
+    #[arg(long, default_value_t = false)]
+    pub system_monitor: bool,
 }
 
 #[derive(Subcommand, Debug)]

@@ -10,12 +10,11 @@ use teloxide::{
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::models::{Command, TelegramDisplay};
-use crate::{
-    prelude::*,
-    process_tracker::{self, structs::ProcessInfo},
-    telegram_bot::utils::escape_mdv2,
+use super::{
+    models::{Command, TelegramDisplay},
+    utils::escape_mdv2,
 };
+use crate::{prelude::*, process_tracker, system_monitor, utils::recv_or_pending};
 
 pub fn init_bot(cancel_token: CancellationToken) -> Option<dispatching::ShutdownToken> {
     let config = get_config();
@@ -65,41 +64,46 @@ pub async fn process_tracker_event_notifier(
     bot: Bot,
     mut new_chat_id_receiver: mpsc::Receiver<ChatId>,
 ) {
-    let Some(mut receiver) = process_tracker::subscribe_events() else {
+    let mut process_tracker_rx = process_tracker::subscribe_events();
+    let mut system_monitor_rx = system_monitor::subscribe_events();
+    if process_tracker_rx.is_none() && system_monitor_rx.is_none() {
         return;
-    };
-    let mut chat_ids = vec![];
+    }
+    let mut chat_ids: Vec<ChatId> = vec![];
     loop {
         tokio::select! {
             Some(chat_id) = new_chat_id_receiver.recv() => {
                 chat_ids.push(chat_id);
                 info!("New chat id registered: {chat_id}");
             }
-            event = receiver.recv() => {
-                let event = match event {
-                    Ok(event) => event,
-                    Err(err) => {
-                        error!("Failed to receive process tracker event: {err}");
-                        continue;
-                    }
-                };
-                let message = super::utils::format_event(&event);
-                let mut dead = vec![];
-                for (i, &chat_id) in chat_ids.iter().enumerate() {
-                    if let Err(err) = bot
-                        .send_message(chat_id, &message)
-                        .parse_mode(ParseMode::MarkdownV2)
-                        .await
-                    {
-                        warn!("Failed to send event to chat {chat_id}: {err}");
-                        dead.push(i);
-                    }
-                }
-                for i in dead.into_iter().rev() {
-                    chat_ids.swap_remove(i);
+            event = recv_or_pending(&mut process_tracker_rx, "telegram: process tracker") => {
+                let message = super::utils::format_process_tracker_event(&event);
+                broadcast_message(&bot, &mut chat_ids, &message).await;
+            }
+            event = recv_or_pending(&mut system_monitor_rx, "telegram: system monitor") => {
+                let message = super::utils::format_system_monitor_event(&event);
+                if let Some(msg) = message {
+                    broadcast_message(&bot, &mut chat_ids, &msg).await;
                 }
             }
         }
+    }
+}
+
+async fn broadcast_message(bot: &Bot, chat_ids: &mut Vec<ChatId>, message: &str) {
+    let mut dead = vec![];
+    for (i, &chat_id) in chat_ids.iter().enumerate() {
+        if let Err(err) = bot
+            .send_message(chat_id, message)
+            .parse_mode(ParseMode::MarkdownV2)
+            .await
+        {
+            warn!("Failed to send event to chat {chat_id}: {err}");
+            dead.push(i);
+        }
+    }
+    for i in dead.into_iter().rev() {
+        chat_ids.swap_remove(i);
     }
 }
 
@@ -109,7 +113,10 @@ fn main_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("📊 Process"),
             KeyboardButton::new("📊 Top Processes"),
         ],
-        vec![KeyboardButton::new("🖼️ Screenshot")],
+        vec![
+            KeyboardButton::new("🖼️ Screenshot"),
+            KeyboardButton::new("🖥️ System Monitor"),
+        ],
         vec![
             KeyboardButton::new("📋 Help"),
             KeyboardButton::new("🔴 Stop"),
@@ -135,6 +142,7 @@ fn schema() -> dispatching::UpdateHandler<Error> {
         .branch(dptree::case![Command::Menu].endpoint(handle_start))
         .branch(dptree::case![Command::Help].endpoint(handle_help))
         .branch(dptree::case![Command::Screenshot].endpoint(handle_screenshot))
+        .branch(dptree::case![Command::SystemSnapshot].endpoint(handle_system_monitor))
         .branch(dptree::case![Command::Process].endpoint(handle_process))
         .branch(dptree::case![Command::TopProcesses].endpoint(handle_top_processes_menu))
         .branch(dptree::case![Command::StopKnightWatch].endpoint(handle_stop));
@@ -239,6 +247,37 @@ async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
+async fn handle_system_monitor(bot: Bot, msg: Message) -> Result<()> {
+    for root_pid in process_tracker::get_root_pids().await {
+        let (root_snap, children_snaps, work_done) = tokio::join!(
+            process_tracker::get_root(root_pid),
+            process_tracker::get_children(root_pid),
+            process_tracker::is_work_done(root_pid),
+        );
+        let child_count = children_snaps.len();
+        let process_tree_snapshot =
+            super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
+                root: root_snap.map(Into::into),
+                children: children_snaps.into_iter().map(Into::into).collect(),
+                child_count,
+                work_done,
+                timestamp: crate::utils::now_rfc3339(),
+            });
+        bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
+            .parse_mode(ParseMode::MarkdownV2)
+            .await?;
+    }
+    let system_snapshot = system_monitor::get_snapshot().await;
+    let message = match system_snapshot {
+        Some(snap) => TelegramDisplay(&snap).to_string(),
+        None => "*No System Snapshot found*".to_string(),
+    };
+    bot.send_message(msg.chat.id, message)
+        .parse_mode(ParseMode::MarkdownV2)
+        .await?;
+    Ok(())
+}
+
 async fn handle_top_processes_menu(bot: Bot, msg: Message) -> Result<()> {
     bot.send_message(msg.chat.id, "📊 *Top Processes* — sort by:")
         .parse_mode(ParseMode::MarkdownV2)
@@ -267,7 +306,7 @@ async fn handle_top_processes_by(
     }
     let body = snapshots
         .iter()
-        .map(|s| TelegramDisplay(&ProcessInfo::from(s)).to_string())
+        .map(|s| TelegramDisplay(&process_tracker::structs::ProcessInfo::from(s)).to_string())
         .collect::<Vec<_>>()
         .join("\n\n");
     let header = format!("📊 Top Processes by {label}\n\n");
@@ -293,6 +332,7 @@ async fn handle_plain_message(
     match msg.text() {
         Some("📋 Help") => handle_help(bot, msg).await?,
         Some("🖼️ Screenshot") => handle_screenshot(bot, msg).await?,
+        Some("🖥️ System Monitor") => handle_system_monitor(bot, msg).await?,
         Some("📊 Process") => handle_process(bot, msg).await?,
         Some("📊 Top Processes") => handle_top_processes_menu(bot, msg).await?,
         Some("🔥 By CPU") => {

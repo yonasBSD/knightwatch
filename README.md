@@ -227,6 +227,8 @@ Process `state` can be `running`, `sleeping`, `gone`, or any other string (rende
 
 `health` can be `healthy`, `warning`, or `critical`. Individual sub-endpoints (`/cpu`, `/memory`, `/disks`, `/networks`, `/gpus`, `/battery`, `/host-info`, `/temperatures`) return their respective nested objects directly.
 
+- **Note: on windows, temepatures api requires you to run the app as administrator**
+
 ---
 
 ## Getting Started
@@ -314,13 +316,13 @@ The following events are emitted by the system monitor (see [Webhooks](#webhooks
 
 | Event | Description |
 | --- | --- |
-| `systemo.initial_snapshot` | Full snapshot emitted on the first tick |
-| `systemo.tick` | Full snapshot emitted every subsequent tick |
-| `systemo.cpu_threshold_exceeded` | CPU usage crossed the warning threshold |
-| `systemo.memory_threshold_exceeded` | Memory usage crossed the warning threshold |
-| `systemo.disk_threshold_exceeded` | A disk's used percentage crossed the warning threshold |
-| `systemo.battery_low` | Battery is discharging and charge fell below the threshold |
-| `systemo.battery_state_changed` | Battery state changed (e.g. plugged in / unplugged) |
+| `system.initial_snapshot` | Full snapshot emitted on the first tick |
+| `system.tick` | Full snapshot emitted every subsequent tick |
+| `system.cpu_threshold_exceeded` | CPU usage crossed the warning threshold |
+| `system.memory_threshold_exceeded` | Memory usage crossed the warning threshold |
+| `system.disk_threshold_exceeded` | A disk's used percentage crossed the warning threshold |
+| `system.battery_low` | Battery is discharging and charge fell below the threshold |
+| `system.battery_state_changed` | Battery state changed (e.g. plugged in / unplugged) |
 
 ---
 
@@ -418,13 +420,13 @@ Webhook URLs can also be stored in persistent config (merged with any provided v
 
 | Event | Description | Key `data` fields |
 | --- | --- | --- |
-| `systemo.initial_snapshot` | First hardware snapshot | `snapshot` |
-| `systemo.tick` | Periodic hardware snapshot | `snapshot` |
-| `systemo.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
-| `systemo.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
-| `systemo.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
-| `systemo.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
-| `systemo.battery_state_changed` | Battery state changed | `state` |
+| `system.initial_snapshot` | First hardware snapshot | `snapshot` |
+| `system.tick` | Periodic hardware snapshot | `snapshot` |
+| `system.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
+| `system.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
+| `system.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
+| `system.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
+| `system.battery_state_changed` | Battery state changed | `state` |
 
 Failed deliveries are retried up to 3 times with exponential backoff.
 

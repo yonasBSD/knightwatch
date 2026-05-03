@@ -114,6 +114,19 @@ impl std::fmt::Display for FDType {
     }
 }
 
+#[cfg(target_os = "linux")]
+impl From<procfs::process::FDTarget> for FDType {
+    fn from(fd_target: procfs::process::FDTarget) -> Self {
+        use procfs::process::FDTarget;
+        match fd_target {
+            FDTarget::Path(_) => Self::File,
+            FDTarget::Socket(_) => Self::Socket,
+            FDTarget::Pipe(_) => Self::Pipe,
+            _ => Self::Other,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum SortKey {
     Memory,

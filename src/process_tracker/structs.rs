@@ -13,12 +13,35 @@ pub struct FileDescriptorInfo {
 }
 
 #[cfg(target_os = "linux")]
+impl From<procfs::process::FDInfo> for FileDescriptorInfo {
+    fn from(fd_info: procfs::process::FDInfo) -> Self {
+        Self {
+            fd: fd_info.fd,
+            target: format!("{:?}", fd_info.target),
+            fd_type: fd_info.target.into(),
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct IOStats {
     pub read_bytes: u64,
     pub write_bytes: u64,
     pub read_chars: u64,
     pub write_chars: u64,
+}
+
+#[cfg(target_os = "linux")]
+impl From<procfs::process::Io> for IOStats {
+    fn from(io: procfs::process::Io) -> Self {
+        Self {
+            read_bytes: io.read_bytes,
+            write_bytes: io.write_bytes,
+            read_chars: io.rchar,
+            write_chars: io.wchar,
+        }
+    }
 }
 
 /// Lightweight per-process data captured each tick.

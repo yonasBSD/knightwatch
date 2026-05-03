@@ -1,31 +1,16 @@
 #[cfg(target_os = "linux")]
-use procfs::process::{FDTarget, Process};
+use procfs::process::Process;
 
 // Linux-only helper functions
 #[cfg(target_os = "linux")]
 pub fn collect_file_descriptors(pid: u32) -> Vec<super::structs::FileDescriptorInfo> {
-    use super::enums::FDType;
-
-    let mut fds = Vec::new();
-    if let Ok(process) = Process::new(pid as i32) {
-        if let Ok(fd_iter) = process.fd() {
-            for fd_info in fd_iter.flatten() {
-
-                let fd_type = match &fd_info.target {
-                    FDTarget::Path(_) => FDType::File,
-                    FDTarget::Socket(_) => FDType::Socket,
-                    FDTarget::Pipe(_) => FDType::Pipe,
-                    _ => FDType::Other,
-                };
-                fds.push(super::structs::FileDescriptorInfo {
-                    fd: fd_info.fd,
-                    target: format!("{:?}", fd_info.target),
-                    fd_type,
-                });
-            }
-        }
+    if let Ok(process) = Process::new(pid as i32)
+        && let Ok(fd_iter) = process.fd()
+    {
+        fd_iter.flatten().map(|fd_info| fd_info.into()).collect()
+    } else {
+        vec![]
     }
-    fds
 }
 
 #[cfg(target_os = "linux")]
@@ -33,12 +18,7 @@ pub fn collect_io_stats(pid: u32) -> Option<super::structs::IOStats> {
     Process::new(pid as i32)
         .ok()
         .and_then(|p| p.io().ok())
-        .map(|io| super::structs::IOStats {
-            read_bytes: io.read_bytes,
-            write_bytes: io.write_bytes,
-            read_chars: io.rchar,
-            write_chars: io.wchar,
-        })
+        .map(Into::into)
 }
 
 #[cfg(target_os = "linux")]

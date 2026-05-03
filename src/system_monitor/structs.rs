@@ -201,9 +201,6 @@ impl From<(&String, &sysinfo::NetworkData)> for NetworkSnapshot {
 // GPU
 // ---------------------------------------------------------------------------
 
-/// GPU readings. `sysinfo` does not expose GPU data; this is designed to be
-/// populated from `nvml` (NVIDIA), `metal` (Apple), or similar — or left
-/// empty if no supported GPU is detected.
 #[derive(Debug, Clone, Serialize)]
 pub struct GpuSnapshot {
     /// Identifier, e.g. "NVIDIA GeForce RTX 4090" or "Apple M3 Pro (GPU)".

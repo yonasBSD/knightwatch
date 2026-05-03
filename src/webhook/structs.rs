@@ -1,5 +1,6 @@
 use crate::{
     process_tracker::enums::ProcessTrackerEvent, system_monitor::enums::SystemMonitorEvent,
+    utils::now_rfc3339,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -42,7 +43,7 @@ impl From<&ProcessTrackerEvent> for WebhookPayload {
         Self {
             version: env!("CARGO_PKG_VERSION"),
             event: event_name,
-            timestamp: crate::utils::now_rfc3339(),
+            timestamp: now_rfc3339(),
             data,
         }
     }
@@ -52,24 +53,24 @@ impl From<&SystemMonitorEvent> for WebhookPayload {
     fn from(event: &SystemMonitorEvent) -> Self {
         let (event_name, data) = match event {
             SystemMonitorEvent::InitialSnapshot { snapshot } => (
-                "systemo.initial_snapshot",
+                "system.initial_snapshot",
                 serde_json::json!({ "snapshot": snapshot }),
             ),
             SystemMonitorEvent::Tick { snapshot } => {
-                ("systemo.tick", serde_json::json!({ "snapshot": snapshot }))
+                ("system.tick", serde_json::json!({ "snapshot": snapshot }))
             }
             SystemMonitorEvent::CpuThresholdExceeded {
                 usage_percent,
                 threshold,
             } => (
-                "systemo.cpu_threshold_exceeded",
+                "system.cpu_threshold_exceeded",
                 serde_json::json!({ "usage_percent": usage_percent, "threshold": threshold }),
             ),
             SystemMonitorEvent::MemoryThresholdExceeded {
                 used_percent,
                 threshold,
             } => (
-                "systemo.memory_threshold_exceeded",
+                "system.memory_threshold_exceeded",
                 serde_json::json!({ "usage_percent": used_percent, "threshold": threshold }),
             ),
             SystemMonitorEvent::DiskThresholdExceeded {
@@ -77,25 +78,25 @@ impl From<&SystemMonitorEvent> for WebhookPayload {
                 used_percent,
                 threshold,
             } => (
-                "systemo.disk_threshold_exceeded",
+                "system.disk_threshold_exceeded",
                 serde_json::json!({ "mount_point": mount_point, "usage_percent": used_percent, "threshold": threshold }),
             ),
             SystemMonitorEvent::BatteryLow {
                 charge_percent,
                 threshold,
             } => (
-                "systemo.battery_low",
+                "system.battery_low",
                 serde_json::json!({ "charge_percent": charge_percent, "threshold": threshold }),
             ),
             SystemMonitorEvent::BatteryStateChanged { state } => (
-                "systemo.battery_state_changed",
+                "system.battery_state_changed",
                 serde_json::json!({ "state": state }),
             ),
         };
         Self {
             version: env!("CARGO_PKG_VERSION"),
             event: event_name,
-            timestamp: crate::utils::now_rfc3339(),
+            timestamp: now_rfc3339(),
             data,
         }
     }

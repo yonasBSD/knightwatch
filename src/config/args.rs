@@ -90,7 +90,12 @@ pub enum ConfigField {
         add: Vec<String>,
         #[arg(long)]
         remove: Vec<String>,
-        #[arg(long, default_value_t = false)]
+        #[arg(
+            long,
+            default_value_t = false,
+            conflicts_with = "add",
+            conflicts_with = "remove"
+        )]
         clear: bool,
     },
 }

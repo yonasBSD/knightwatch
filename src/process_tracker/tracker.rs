@@ -228,7 +228,7 @@ impl ProcessTracker {
             .state
             .root_processes
             .get(&root_pid)
-            .is_none_or(|r| r.root_exited)
+            .is_none_or(|r| r.work_done)
         {
             return Ok(());
         }
@@ -241,13 +241,15 @@ impl ProcessTracker {
             let root_process = self.get_root_process_mut(&root_pid)?;
             root_process.root_exited = true;
             if root_process.first_tick {
-                error!(root_pid, "root process not found — is the PID correct?");
-                return Ok(());
+                error!(
+                    root_pid,
+                    "root process not found on first tick — bad PID or extremely short-lived process"
+                );
             } else {
                 warn!(root_pid, "root process exited");
-                if let Some(ref mut snap) = root_process.last_root {
-                    snap.state = ProcessState::Gone;
-                }
+            }
+            if let Some(ref mut snap) = root_process.last_root {
+                snap.state = ProcessState::Gone;
             }
         }
 

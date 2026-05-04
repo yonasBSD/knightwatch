@@ -21,14 +21,17 @@ fn get_local_ip() -> Option<String> {
     Some(socket.local_addr().ok()?.ip().to_string())
 }
 
-pub fn print_local_ips() {
-    let port = get_config().args.port;
+pub fn print_local_ips(port: u16) {
     println!("API Server running at:");
     println!("  → http://localhost:{}", port);
     println!("  → http://127.0.0.1:{}", port);
     if let Some(ip) = get_local_ip() {
         println!("  → http://{}:{}", ip, port);
     }
+}
+
+pub fn get_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 pub fn format_bytes(bytes: u64) -> String {

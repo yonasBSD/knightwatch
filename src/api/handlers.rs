@@ -44,7 +44,7 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
     if config.args.no_server {
         return Ok(());
     }
-    let api_listener = crate::utils::get_listener(&get_config().server_address())?;
+    let api_listener = crate::utils::get_listener(&config.server_address())?;
     let app = create_router(cancel_token.clone());
     tokio::spawn(async move {
         if let Err(err) = axum::serve(api_listener, app)
@@ -59,6 +59,6 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
         }
     });
     info!("API server started");
-    crate::utils::print_local_ips();
+    crate::utils::print_local_ips(config.args.port);
     Ok(())
 }

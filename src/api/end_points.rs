@@ -30,7 +30,7 @@ pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "healthy".to_string(),
         timestamp: now_rfc3339(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: crate::utils::get_version().to_string(),
         uptime: format!("{uptime}s"),
     })
 }

@@ -1,9 +1,5 @@
-use crate::{
-    system_monitor::enums::SystemHealth,
-    utils::{format_bytes, format_uptime},
-};
-
-use super::utils::escape_mdv2;
+use super::utils::{escape_mdv2, health_emoji};
+use crate::utils::{format_bytes, format_uptime};
 
 #[derive(teloxide::utils::command::BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Available commands:")]
@@ -287,13 +283,5 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::struct
         )?;
 
         Ok(())
-    }
-}
-
-fn health_emoji(health: &SystemHealth) -> &'static str {
-    match health {
-        SystemHealth::Healthy => "✅",
-        SystemHealth::Warning => "⚠️",
-        SystemHealth::Critical => "🔴",
     }
 }

@@ -1,7 +1,7 @@
 use super::models::TelegramDisplay;
 use crate::{
     process_tracker::enums::ProcessTrackerEvent,
-    system_monitor::enums::{BatteryState, SystemMonitorEvent},
+    system_monitor::enums::{BatteryState, SystemHealth, SystemMonitorEvent},
 };
 
 const SPECIAL: &[char] = &[
@@ -122,4 +122,12 @@ pub fn escape_mdv2(s: &str) -> String {
         out.push(c);
     }
     out
+}
+
+pub fn health_emoji(health: &SystemHealth) -> &'static str {
+    match health {
+        SystemHealth::Healthy => "✅",
+        SystemHealth::Warning => "⚠️",
+        SystemHealth::Critical => "🔴",
+    }
 }

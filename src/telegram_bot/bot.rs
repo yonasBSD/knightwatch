@@ -186,7 +186,7 @@ async fn handle_help(bot: Bot, msg: Message) -> Result<()> {
 async fn handle_screenshot(bot: Bot, msg: Message) -> Result<()> {
     bot.send_message(msg.chat.id, "🖼️ Taking Screenshots...")
         .await?;
-    let images = crate::screen_capture::screenshot_all_screens().unwrap_or_default();
+    let images = crate::screen_capture::get_screenshots().await;
     if images.is_empty() {
         bot.send_message(msg.chat.id, "🖼️ No Images were provided.")
             .await?;

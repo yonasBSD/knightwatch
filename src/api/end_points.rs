@@ -52,15 +52,7 @@ pub async fn config() -> Json<ConfigResponse> {
 // ---------------------------------------------------------------------------
 
 pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let images = crate::screen_capture::screenshot_all_screens().map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: format!("Failed to take screenshot: {err}"),
-            }),
-        )
-    })?;
+    let images = crate::screen_capture::get_screenshots().await;
     if images.is_empty() {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,

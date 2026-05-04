@@ -18,6 +18,7 @@ async fn main() -> Result<(), errors::Error> {
     if let Some(action) = config.args.command.as_ref() {
         return config::handle_config_command(action);
     }
+    screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();
     system_monitor::init_system_monitor();
     let cancel_token = tokio_util::sync::CancellationToken::new();

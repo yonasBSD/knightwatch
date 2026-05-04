@@ -1,4 +1,6 @@
-mod structs;
 mod capture;
+mod client;
+mod models;
 
-pub use capture::*;
+pub use capture::init_screen_capture;
+pub use client::*;

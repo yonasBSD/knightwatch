@@ -7,3 +7,10 @@ pub struct Screenshot {
     pub height: u32,
     pub timestamp: String,
 }
+
+#[derive(Debug)]
+pub enum ScreenCaptureQuery {
+    GetScreenshots {
+        response: tokio::sync::oneshot::Sender<Vec<Screenshot>>,
+    },
+}

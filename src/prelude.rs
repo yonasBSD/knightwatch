@@ -1,3 +1,3 @@
-pub use crate::{config::get_config, types::*, errors::Error};
+pub use crate::{config::get_config, errors::*, types::*};
 
 pub use tracing::{error, info, warn};

@@ -1,5 +1,5 @@
 mod dispatcher;
-mod structs;
+mod models;
 
 use crate::prelude::*;
 

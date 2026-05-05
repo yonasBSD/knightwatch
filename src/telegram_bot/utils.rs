@@ -1,7 +1,7 @@
 use super::models::TelegramDisplay;
 use crate::{
-    process_tracker::enums::ProcessTrackerEvent,
-    system_monitor::enums::{BatteryState, SystemHealth, SystemMonitorEvent},
+    process_tracker::ProcessTrackerEvent,
+    system_monitor::{BatteryState, SystemHealth, SystemMonitorEvent},
 };
 
 const SPECIAL: &[char] = &[

@@ -1,7 +1,7 @@
 use reqwest::Client;
 use tokio_util::sync::CancellationToken;
 
-use super::structs::WebhookPayload;
+use super::models::WebhookPayload;
 use crate::{prelude::*, utils::recv_or_pending};
 
 pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) {

@@ -1,8 +1,10 @@
 mod client;
-pub mod enums;
+mod enums;
+mod models;
 mod monitor;
-pub mod structs;
+mod structs;
 mod utils;
 
 pub use client::*;
+pub use models::*;
 pub use monitor::init_system_monitor;

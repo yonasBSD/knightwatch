@@ -24,9 +24,7 @@ pub enum Command {
 
 pub struct TelegramDisplay<'a, T>(pub &'a T);
 
-impl<'a> std::fmt::Display
-    for TelegramDisplay<'a, crate::process_tracker::structs::ProcessSnapshot>
-{
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::ProcessSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
         write!(
@@ -61,7 +59,7 @@ impl<'a> std::fmt::Display
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::structs::ProcessTree> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::ProcessTree> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let t = self.0; // Header
         let status_icon = if t.work_done { "✅" } else { "⏳" };
@@ -87,7 +85,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::struc
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::structs::SystemSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::SystemSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
 

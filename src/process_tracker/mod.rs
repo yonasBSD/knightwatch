@@ -1,11 +1,15 @@
 mod client;
-pub mod enums;
-pub mod structs;
+mod enums;
+mod models;
+mod structs;
 mod tracker;
 mod utils;
 
 mod process_state_serde {
-    pub fn serialize<S>(state: &super::enums::ProcessState, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        state: &super::enums::ProcessState,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -14,4 +18,5 @@ mod process_state_serde {
 }
 
 pub use client::*;
+pub use models::*;
 pub use tracker::init_process_tracker;

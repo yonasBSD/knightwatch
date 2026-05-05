@@ -232,14 +232,13 @@ async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
             process_tracker::is_work_done(root_pid),
         );
         let child_count = children.len();
-        let process_tree_snapshot =
-            super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
-                root,
-                children,
-                child_count,
-                work_done,
-                timestamp: crate::utils::now_rfc3339(),
-            });
+        let process_tree_snapshot = super::models::TelegramDisplay(&process_tracker::ProcessTree {
+            root,
+            children,
+            child_count,
+            work_done,
+            timestamp: crate::utils::now_rfc3339(),
+        });
         bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
             .parse_mode(ParseMode::MarkdownV2)
             .await?;
@@ -255,14 +254,13 @@ async fn handle_system_monitor(bot: Bot, msg: Message) -> Result<()> {
             process_tracker::is_work_done(root_pid),
         );
         let child_count = children.len();
-        let process_tree_snapshot =
-            super::models::TelegramDisplay(&process_tracker::structs::ProcessTree {
-                root,
-                children,
-                child_count,
-                work_done,
-                timestamp: crate::utils::now_rfc3339(),
-            });
+        let process_tree_snapshot = super::models::TelegramDisplay(&process_tracker::ProcessTree {
+            root,
+            children,
+            child_count,
+            work_done,
+            timestamp: crate::utils::now_rfc3339(),
+        });
         bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
             .parse_mode(ParseMode::MarkdownV2)
             .await?;
@@ -289,7 +287,7 @@ async fn handle_top_processes_menu(bot: Bot, msg: Message) -> Result<()> {
 async fn handle_top_processes_by(
     bot: Bot,
     msg: Message,
-    by: process_tracker::enums::SortKey,
+    by: process_tracker::SortKey,
 ) -> Result<()> {
     let label = by.to_string();
     bot.send_message(
@@ -336,10 +334,10 @@ async fn handle_plain_message(
         Some("📊 Process") => handle_process(bot, msg).await?,
         Some("📊 Top Processes") => handle_top_processes_menu(bot, msg).await?,
         Some("🔥 By CPU") => {
-            handle_top_processes_by(bot, msg, process_tracker::enums::SortKey::Cpu).await?
+            handle_top_processes_by(bot, msg, process_tracker::SortKey::Cpu).await?
         }
         Some("🧠 By Memory") => {
-            handle_top_processes_by(bot, msg, process_tracker::enums::SortKey::Memory).await?
+            handle_top_processes_by(bot, msg, process_tracker::SortKey::Memory).await?
         }
         Some("❌ Cancel") => {
             bot.send_message(msg.chat.id, "Cancelled")

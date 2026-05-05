@@ -30,35 +30,6 @@ impl ProcessTrackerChannels {
     }
 }
 
-struct RootProcess {
-    #[allow(unused)]
-    root_pid: u32,
-    first_tick: bool,
-    root_appeared: bool,
-    prev_child_pids: HashSet<u32>,
-    work_done: bool,
-    root_exited: bool,
-    children_ever_seen: bool,
-    last_root: Option<ProcessSnapshot>,
-    last_children: Vec<ProcessSnapshot>,
-}
-
-impl RootProcess {
-    pub fn new(root_pid: u32) -> Self {
-        Self {
-            root_pid,
-            first_tick: true,
-            root_appeared: false,
-            prev_child_pids: HashSet::new(),
-            work_done: false,
-            root_exited: false,
-            children_ever_seen: false,
-            last_root: None,
-            last_children: Vec::new(),
-        }
-    }
-}
-
 struct ProcessTrackerState {
     root_processes: HashMap<u32, RootProcess>,
     last_top_by_memory: Vec<ProcessSnapshot>,

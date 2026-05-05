@@ -1,8 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::{
-    process_tracker::enums::ProcessTrackerEvent, system_monitor::enums::SystemMonitorEvent,
-};
+use crate::{process_tracker::ProcessTrackerEvent, system_monitor::SystemMonitorEvent};
 
 #[derive(Debug, serde::Serialize)]
 pub struct WebhookPayload {

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashSet;
 use tokio::sync::{broadcast, mpsc};
 
 use super::{enums::*, process_state_serde};
@@ -40,6 +41,35 @@ impl From<procfs::process::Io> for IOStats {
             write_bytes: io.write_bytes,
             read_chars: io.rchar,
             write_chars: io.wchar,
+        }
+    }
+}
+
+pub struct RootProcess {
+    #[allow(unused)]
+    pub root_pid: u32,
+    pub first_tick: bool,
+    pub root_appeared: bool,
+    pub prev_child_pids: HashSet<u32>,
+    pub work_done: bool,
+    pub root_exited: bool,
+    pub children_ever_seen: bool,
+    pub last_root: Option<ProcessSnapshot>,
+    pub last_children: Vec<ProcessSnapshot>,
+}
+
+impl RootProcess {
+    pub fn new(root_pid: u32) -> Self {
+        Self {
+            root_pid,
+            first_tick: true,
+            root_appeared: false,
+            prev_child_pids: HashSet::new(),
+            work_done: false,
+            root_exited: false,
+            children_ever_seen: false,
+            last_root: None,
+            last_children: Vec::new(),
         }
     }
 }

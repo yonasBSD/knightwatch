@@ -536,10 +536,17 @@ function renderSystemSnapshot(snap) {
         }
         <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
           ${g.usage_percent != null ? kv("Core", g.usage_percent.toFixed(1) + "%") : ""}
-          ${g.vram_used_human != null ? kv("VRAM", g.vram_used_human + " / " + (g.vram_total_human ?? "?")) : ""}
+          ${g.vram_used_bytes != null ? kv("VRAM", formatBytes(g.vram_used_bytes) + " / " + (formatBytes(g.vram_total_bytes) ?? "?")) : ""}
           ${g.temperature_celsius != null ? kv("Temp", g.temperature_celsius.toFixed(0) + "°C") : ""}
           ${g.power_draw_watts != null ? kv("Power", g.power_draw_watts.toFixed(0) + "W") : ""}
-          ${g.fan_speed_percent != null ? kv("Fan", g.fan_speed_percent.toFixed(0) + "%") : ""}
+          ${
+            g.fan_speed_percent != null && g.fan_speed_percent.length > 0
+              ? kv(
+                  g.fan_speed_percent.length > 1 ? "Fans" : "Fan",
+                  g.fan_speed_percent.map((f) => f.toFixed(0) + "%").join(", "),
+                )
+              : ""
+          }
         </div>
       </div>
     `,

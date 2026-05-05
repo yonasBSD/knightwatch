@@ -199,7 +199,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::struct
                 if let Some(usage) = gpu.usage_percent {
                     writeln!(f, "   ├ Core: `{usage:.1}%`")?;
                 }
-                if let (Some(used), Some(total)) = (&gpu.vram_used_human, &gpu.vram_total_human) {
+                if let (Some(used), Some(total)) = (gpu.vram_used_bytes, gpu.vram_total_bytes) {
                     let pct_str = gpu
                         .vram_used_percent
                         .map(|p| format!(" \\(`{p:.1}%`\\)"))
@@ -207,8 +207,8 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::struct
                     writeln!(
                         f,
                         "   ├ VRAM: `{used}` / `{total}`{pct_str}",
-                        used = escape_mdv2(used),
-                        total = escape_mdv2(total),
+                        used = escape_mdv2(&format_bytes(used)),
+                        total = escape_mdv2(&format_bytes(total)),
                     )?;
                 }
                 if let Some(temp) = gpu.temperature_celsius {
@@ -219,8 +219,22 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::struct
                 } else if let Some(draw) = gpu.power_draw_watts {
                     writeln!(f, "   ├ Power: `{draw:.1}W`")?;
                 }
-                if let Some(fan) = gpu.fan_speed_percent {
-                    writeln!(f, "   └ Fan: `{fan:.0}%`")?;
+                if !gpu.fan_speed_percent.is_empty() {
+                    let fans = gpu
+                        .fan_speed_percent
+                        .iter()
+                        .map(|f| format!("`{f:.0}%`"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    writeln!(
+                        f,
+                        "   └ Fan{}: {fans}",
+                        if gpu.fan_speed_percent.len() > 1 {
+                            "s"
+                        } else {
+                            ""
+                        }
+                    )?;
                 }
             }
         }

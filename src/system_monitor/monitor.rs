@@ -1,4 +1,5 @@
 use battery::Manager as BatterManager;
+use nvml_wrapper::Nvml;
 use std::sync::OnceLock;
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, System};
 use tokio::{
@@ -54,6 +55,7 @@ struct SystemMonitor {
     disks: Disks,
     networks: Networks,
     components: Components,
+    nvml: Option<Nvml>,
     poll_interval: Duration,
     poll_interval_timer: Option<tokio::time::Interval>,
     thresholds: Thresholds,
@@ -77,6 +79,7 @@ impl SystemMonitor {
             disks: Disks::new_with_refreshed_list(),
             networks: Networks::new_with_refreshed_list(),
             components: Components::new_with_refreshed_list(),
+            nvml: Nvml::init().ok(),
             poll_interval: Duration::from_secs(1),
             poll_interval_timer: None,
             thresholds: Thresholds::default(),
@@ -351,9 +354,14 @@ impl SystemMonitor {
             .map(Into::into)
     }
 
-    //TODO
     fn build_gpu_snapshots(&self) -> Vec<GpuSnapshot> {
-        vec![]
+        let Some(ref nvml) = self.nvml else {
+            return vec![];
+        };
+        let devices_count = nvml.device_count().unwrap_or(0);
+        (0..devices_count)
+            .filter_map(|i| nvml.device_by_index(i).ok().map(Into::into))
+            .collect()
     }
 
     fn build_host_info(&self) -> HostInfo {

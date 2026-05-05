@@ -212,16 +212,52 @@ pub struct GpuSnapshot {
     /// VRAM total in bytes. None if unavailable.
     pub vram_total_bytes: Option<u64>,
     pub vram_used_percent: Option<f32>,
-    pub vram_used_human: Option<String>,
-    pub vram_total_human: Option<String>,
     /// Core temperature °C. None if unavailable.
     pub temperature_celsius: Option<f32>,
     /// Power draw in watts. None if unavailable.
     pub power_draw_watts: Option<f32>,
     /// TDP limit in watts. None if unavailable.
     pub power_limit_watts: Option<f32>,
-    /// Fan speed 0–100. None if unavailable or fanless.
-    pub fan_speed_percent: Option<f32>,
+    /// Fans speed 0–100. empty if unavailable or fanless.
+    pub fan_speed_percent: Vec<f32>,
+}
+
+impl From<nvml_wrapper::Device<'_>> for GpuSnapshot {
+    fn from(device: nvml_wrapper::Device) -> Self {
+        let vram = device.memory_info().ok();
+        let used = vram.as_ref().map(|v| v.used);
+        let total = vram.as_ref().map(|v| v.total);
+        let used_percent = if let (Some(used), Some(total)) = (used, total) {
+            if total > 0 {
+                Some((used as f32 / total as f32) * 100.0)
+            } else {
+                Some(0.0)
+            }
+        } else {
+            None
+        };
+        let num_fans = device.num_fans().unwrap_or(0);
+        let fan_speed_percent = (0..num_fans)
+            .filter_map(|i| device.fan_speed(i).map(|f| f as f32).ok())
+            .collect();
+        Self {
+            name: device.name().unwrap_or_default(),
+            usage_percent: device.utilization_rates().map(|r| r.gpu as f32).ok(),
+            vram_used_bytes: used,
+            vram_total_bytes: total,
+            vram_used_percent: used_percent,
+            temperature_celsius: device
+                .temperature(nvml_wrapper::enum_wrappers::device::TemperatureSensor::Gpu)
+                .map(|t| t as f32)
+                .ok(),
+            power_draw_watts: device.power_usage().map(|p| p as f32 / 1000.0).ok(),
+            power_limit_watts: device
+                .enforced_power_limit()
+                .map(|p| p as f32 / 1000.0)
+                .ok(),
+            fan_speed_percent,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

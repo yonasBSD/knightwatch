@@ -5,7 +5,6 @@ use axum::{
     response::{Html, Json, Response},
 };
 use base64::{Engine as _, engine::general_purpose};
-use std::time::SystemTime;
 
 use super::{constants::*, models::*};
 use crate::{
@@ -22,16 +21,12 @@ pub async fn shutdown(
 }
 
 pub async fn health() -> Json<HealthResponse> {
-    let start_time = SystemTime::UNIX_EPOCH;
-    let uptime = SystemTime::now()
-        .duration_since(start_time)
-        .unwrap_or_default()
-        .as_secs();
+    let uptime = START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
     Json(HealthResponse {
         status: "healthy".to_string(),
         timestamp: now_rfc3339(),
         version: crate::utils::get_version().to_string(),
-        uptime: format!("{uptime}s"),
+        uptime: crate::utils::format_uptime(uptime),
     })
 }
 
@@ -300,7 +295,8 @@ pub async fn battery_snapshot()
 /// `GET /host-info`
 ///
 /// Returns the current Host Info Snapshot.
-pub async fn host_info_snapshot() -> Result<Json<system_monitor::HostInfo>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn host_info_snapshot()
+-> Result<Json<system_monitor::HostInfo>, (StatusCode, Json<ErrorResponse>)> {
     match system_monitor::get_host_info().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((

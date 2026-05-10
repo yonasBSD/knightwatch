@@ -18,7 +18,7 @@ pub fn now_rfc3339() -> String {
 fn get_local_ip() -> Option<String> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
-    Some(socket.local_addr().ok()?.ip().to_string())
+    socket.local_addr().ok().map(|addr| addr.ip().to_string())
 }
 
 pub fn print_local_ips(port: u16) {
@@ -27,6 +27,8 @@ pub fn print_local_ips(port: u16) {
     println!("  → http://127.0.0.1:{}", port);
     if let Some(ip) = get_local_ip() {
         println!("  → http://{}:{}", ip, port);
+    } else {
+        debug!("Could not determine local IP address");
     }
 }
 
@@ -52,9 +54,24 @@ pub fn format_uptime(secs: u64) -> String {
     let days = secs / 86_400;
     let hours = (secs % 86_400) / 3_600;
     let mins = (secs % 3_600) / 60;
-    match days {
-        0 => format!("{hours}h {mins}m"),
-        d => format!("{d}d {hours}h {mins}m"),
+    let secs = secs % 60;
+    let mut buf = vec![];
+    if days != 0 {
+        buf.push(format!("{days}d"));
+    }
+    if hours != 0 {
+        buf.push(format!("{hours}h"));
+    }
+    if mins != 0 {
+        buf.push(format!("{mins}m"));
+    }
+    if secs != 0 {
+        buf.push(format!("{secs}s"));
+    }
+    if buf.is_empty() {
+        "0s".to_string()
+    } else {
+        buf.join(" ")
     }
 }
 

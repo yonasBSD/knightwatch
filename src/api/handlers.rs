@@ -7,6 +7,10 @@ use tokio_util::sync::CancellationToken;
 use super::end_points::*;
 use crate::prelude::*;
 
+fn init_start_time() {
+    super::constants::START_TIME.get_or_init(std::time::Instant::now);
+}
+
 fn create_router(cancel_token: CancellationToken) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -44,6 +48,7 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
     if config.args.no_server {
         return Ok(());
     }
+    init_start_time();
     let api_listener = crate::utils::get_listener(&config.server_address())?;
     let app = create_router(cancel_token.clone());
     tokio::spawn(async move {

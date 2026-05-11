@@ -248,7 +248,8 @@ Pass the PID of the root process you want to monitor. The server will start on `
 | `--pid <PID>` | — | PID of the root process to track (repeatable) |
 | `--host <HOST>` | `0.0.0.0` | Host address for the API server |
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
-| `--no-server` | `false` | Disable the API server entirely |
+| `--no-api` | `false` | Disable the API server entirely |
+| `--no-dashboard` | `false` | Disable the web dashboard entirely |
 | `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
 | `--system-monitor` | `false` | Enable the system monitor (CPU, memory, disks, network, battery, thermals) |
 | `--telegram` | `false` | Enable the Telegram bot |

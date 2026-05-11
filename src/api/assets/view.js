@@ -16,7 +16,7 @@ let config = null;
 
 async function loadConfig() {
   try {
-    const r = await fetch("/config");
+    const r = await fetch("/api/config");
     if (!r.ok) throw new Error("config fetch failed");
     config = await r.json();
   } catch {
@@ -190,7 +190,7 @@ function buildCard(proc, isRoot = false) {
 
 function refreshScreenshots() {
   const start = Date.now();
-  fetch("/screenshot")
+  fetch("/api/screenshot")
     .then((r) => {
       if (!r.ok) throw new Error("HTTP error");
       return r.json();
@@ -267,7 +267,7 @@ async function refreshProcess() {
       }
     });
 
-    const rIds = await fetch("/root_pids");
+    const rIds = await fetch("/api/root_pids");
     if (!rIds.ok) throw new Error("HTTP error");
     const pids = await rIds.json();
 
@@ -282,7 +282,7 @@ async function refreshProcess() {
 
     for (const pid of pids) {
       try {
-        const r = await fetch(`/process/${pid}`);
+        const r = await fetch(`/api/process/${pid}`);
         if (!r.ok) continue;
         const data = await r.json();
 
@@ -332,7 +332,7 @@ function refreshTopProcesses() {
   const sort = topSortSelect?.value || "cpu";
   const limit = topLimitInput?.value || 5;
 
-  fetch(`/top-processes?sort=${sort}&limit=${limit}`)
+  fetch(`/api/top-processes?sort=${sort}&limit=${limit}`)
     .then((r) => {
       if (!r.ok) throw new Error("HTTP error");
       return r.json();
@@ -356,7 +356,7 @@ document.getElementById("shutdown-btn").addEventListener("click", () => {
   const btn = document.getElementById("shutdown-btn");
   btn.disabled = true;
   btn.textContent = "Shutting down…";
-  fetch("/shutdown", { method: "POST" })
+  fetch("/api/shutdown", { method: "POST" })
     .then(() => {
       statusEl.innerHTML = `<span style="color:var(--error)">● OFFLINE · Server shut down</span>`;
     })
@@ -602,7 +602,7 @@ function renderSystemSnapshot(snap) {
 // ── System refresh ─────────────────────────────────────────────────
 
 function refreshSystem() {
-  fetch("/system")
+  fetch("/api/system")
     .then((r) => {
       if (!r.ok) throw new Error("HTTP error");
       return r.json();

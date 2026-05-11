@@ -73,7 +73,7 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Json<
     Ok(Json(ScreenshotResponse { screens, count }))
 }
 
-pub async fn view() -> Html<&'static str> {
+pub async fn dashboard() -> Html<&'static str> {
     Html(VIEW_HTML)
 }
 

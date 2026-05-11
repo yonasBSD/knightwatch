@@ -24,7 +24,7 @@ async fn main() -> Result<(), errors::Error> {
     let cancel_token = tokio_util::sync::CancellationToken::new();
     api::init_api_server(cancel_token.clone())?;
     webhook::init_webhook_dispatcher(cancel_token.clone());
-    let telegram_bot_handle = telegram_bot::init_bot(cancel_token.clone());
+    let telegram_bot = telegram_bot::init_bot(cancel_token.clone());
     tokio::select! {
         _ = cancel_token.cancelled() => {}
         _ = tokio::signal::ctrl_c() => {
@@ -33,8 +33,8 @@ async fn main() -> Result<(), errors::Error> {
         }
     }
     tracing::warn!("Shutting down...");
-    if let Some(handle) = telegram_bot_handle {
-        handle.shutdown().unwrap().await;
+    if let Some(bot) = telegram_bot {
+        bot.shutdown().await;
     }
     Ok(())
 }

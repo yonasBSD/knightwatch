@@ -11,18 +11,13 @@ fn init_start_time() {
     super::constants::START_TIME.get_or_init(std::time::Instant::now);
 }
 
-fn create_router(cancel_token: CancellationToken) -> Router {
+fn create_api_router(cancel_token: CancellationToken) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/shutdown", post(shutdown))
         .route("/config", get(config))
         // ── Screenshot ────────────────────────────────────────────────────
         .route("/screenshot", get(screenshot))
-        // ── Web dashboard ────────────────────────────────────────────────────
-        .route("/", get(view))
-        .route("/view", get(view))
-        .route("/view.css", get(view_css))
-        .route("/view.js", get(view_js))
         // ── Process tracking ──────────────────────────────────────────────
         .route("/root_pids", get(root_pids)) // root pids
         .route("/process/{root_pid}", get(process_tree)) // full tree
@@ -43,14 +38,26 @@ fn create_router(cancel_token: CancellationToken) -> Router {
         .with_state(cancel_token)
 }
 
+fn create_web_dashboard() -> Router {
+    Router::new()
+        // ── Web dashboard ────────────────────────────────────────────────────
+        .route("/dashboard", get(dashboard))
+        .route("/view.css", get(view_css))
+        .route("/view.js", get(view_js))
+}
+
 pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
     let config = get_config();
-    if config.args.no_server {
+    if config.args.no_api {
         return Ok(());
     }
     init_start_time();
     let api_listener = crate::utils::get_listener(&config.server_address())?;
-    let app = create_router(cancel_token.clone());
+    let mut app = Router::new();
+    app = app.nest("/api", create_api_router(cancel_token.clone()));
+    if !config.args.no_dashboard {
+        app = app.merge(create_web_dashboard());
+    }
     tokio::spawn(async move {
         if let Err(err) = axum::serve(api_listener, app)
             .with_graceful_shutdown(async move {
@@ -64,6 +71,9 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
         }
     });
     info!("API server started");
+    if !config.args.no_dashboard {
+        info!("Dashboard available at /");
+    }
     crate::utils::print_local_ips(config.args.port);
     Ok(())
 }

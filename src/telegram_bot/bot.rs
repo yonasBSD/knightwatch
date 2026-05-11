@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use teloxide::{
-    dispatching,
     prelude::*,
     types::{
         ChatId, InputFile, InputMedia, InputMediaPhoto, KeyboardButton, KeyboardMarkup, ParseMode,
@@ -11,12 +10,12 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    models::{Command, TelegramDisplay},
+    models::{Command, TelegramDisplay, TelegramBot},
     utils::escape_mdv2,
 };
 use crate::{prelude::*, process_tracker, system_monitor, utils::recv_or_pending};
 
-pub fn init_bot(cancel_token: CancellationToken) -> Option<dispatching::ShutdownToken> {
+pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let config = get_config();
     if !config.args.telegram {
         return None;
@@ -55,14 +54,15 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<dispatching::Shutdown
         }
         dispatcher.dispatch().await;
     });
-    tokio::spawn(async move { process_tracker_event_notifier(bot, receiver).await });
+    tokio::spawn(async move { process_tracker_event_notifier(bot, receiver, cancel_token).await });
     info!("Telegram Bot started");
-    Some(shutdown_token)
+    Some(TelegramBot { shutdown_token })
 }
 
 pub async fn process_tracker_event_notifier(
     bot: Bot,
     mut new_chat_id_receiver: mpsc::Receiver<ChatId>,
+    cancel_token: CancellationToken,
 ) {
     let mut process_tracker_rx = process_tracker::subscribe_events();
     let mut system_monitor_rx = system_monitor::subscribe_events();
@@ -72,6 +72,10 @@ pub async fn process_tracker_event_notifier(
     let mut chat_ids: Vec<ChatId> = vec![];
     loop {
         tokio::select! {
+            _ = cancel_token.cancelled() => {
+                info!("Cancelled while waiting for Telegram");
+                return;
+            }
             Some(chat_id) = new_chat_id_receiver.recv() => {
                 chat_ids.push(chat_id);
                 info!("New chat id registered: {chat_id}");
@@ -136,7 +140,7 @@ fn top_processes_keyboard() -> KeyboardMarkup {
     .resize_keyboard()
 }
 
-fn schema() -> dispatching::UpdateHandler<Error> {
+fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
     let command_handler = teloxide::filter_command::<Command, _>()
         .branch(dptree::case![Command::Start].endpoint(handle_start))
         .branch(dptree::case![Command::Menu].endpoint(handle_start))

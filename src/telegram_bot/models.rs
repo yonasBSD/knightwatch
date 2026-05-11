@@ -22,6 +22,19 @@ pub enum Command {
     StopKnightWatch,
 }
 
+pub struct TelegramBot {
+    pub shutdown_token: teloxide::dispatching::ShutdownToken,
+}
+
+impl TelegramBot {
+    pub async fn shutdown(self) {
+        match self.shutdown_token.shutdown() {
+            Ok(fut) => fut.await,
+            Err(err) => tracing::error!(err = err.to_string(), "Failed to shutdown telegram bot"),
+        }
+    }
+}
+
 pub struct TelegramDisplay<'a, T>(pub &'a T);
 
 impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::ProcessSnapshot> {

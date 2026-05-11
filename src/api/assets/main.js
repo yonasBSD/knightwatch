@@ -10,6 +10,60 @@ const topLimitInput = document.getElementById("top-limit-input");
 const telegramIndicator = document.getElementById("telegram-indicator");
 const systemPanel = document.getElementById("system-panel");
 
+// ── Tabs ───────────────────────────────────────────────────────────
+
+const tabnav = document.getElementById("tabnav");
+const tabIndicator = tabnav?.querySelector(".tab-indicator");
+const tabs = Array.from(tabnav?.querySelectorAll(".tab") || []);
+const panes = {
+  screens: document.getElementById("pane-screens"),
+  system: document.getElementById("pane-system"),
+  processes: document.getElementById("pane-processes"),
+};
+
+function moveIndicator(btn) {
+  if (!btn || !tabIndicator) return;
+  const navRect = tabnav.getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  tabIndicator.style.width = r.width + "px";
+  tabIndicator.style.transform = `translateX(${r.left - navRect.left - 4}px)`;
+}
+
+function activateTab(name, { focus = false } = {}) {
+  tabs.forEach((t) => {
+    const active = t.dataset.tab === name;
+    t.setAttribute("aria-selected", active ? "true" : "false");
+    if (active && focus) t.focus();
+    if (active) moveIndicator(t);
+  });
+  Object.entries(panes).forEach(([k, el]) => {
+    if (!el) return;
+    el.classList.toggle("active", k === name);
+  });
+  try {
+    history.replaceState(null, "", "#" + name);
+  } catch {}
+}
+
+tabs.forEach((t) => {
+  t.addEventListener("click", () => activateTab(t.dataset.tab));
+});
+
+window.addEventListener("resize", () => {
+  const sel = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+  if (sel) moveIndicator(sel);
+});
+
+// Initial tab from hash, default screens
+(() => {
+  const fromHash = (location.hash || "").replace("#", "");
+  const initial = ["screens", "system", "processes"].includes(fromHash)
+    ? fromHash
+    : "screens";
+  // Defer so layout is ready for indicator measurement
+  requestAnimationFrame(() => activateTab(initial));
+})();
+
 // ── Config ─────────────────────────────────────────────────────────
 
 let config = null;
@@ -22,7 +76,7 @@ async function loadConfig() {
   } catch {
     config = {
       blind: false,
-      pid: null,
+      pid: [],
       top_processes: false,
       limit_processes: 5,
       telegram_bot: false,
@@ -44,14 +98,17 @@ async function loadConfig() {
     }
   }
 
-  // Hide screenshots pane if blind
+  // Hide screenshots tab/pane if blind
   if (config.blind) {
-    screensPane.style.display = "none";
+    const t = tabs.find((x) => x.dataset.tab === "screens");
+    if (t) t.style.display = "none";
+    if (panes.screens) panes.screens.classList.remove("active");
+    activateTab("system");
   }
 
-  // Hide process pane sections based on config
-  if (config.pid.length === 0) {
-    rootSection.style.display = "none";
+  // Hide tracked-process column if no PIDs
+  if (!config.pid || config.pid.length === 0) {
+    if (rootSection?.parentElement) rootSection.parentElement.style.display = "none";
     workBanner.style.display = "none";
   }
 
@@ -59,7 +116,6 @@ async function loadConfig() {
     topProcessesSection.style.display = "none";
   }
 
-  // Clamp the limit input max to server's supported maximum
   if (topLimitInput && config.limit_processes != null) {
     topLimitInput.max = config.limit_processes;
     if (parseInt(topLimitInput.value) > config.limit_processes) {
@@ -68,7 +124,18 @@ async function loadConfig() {
   }
 
   if (!config.system_monitor) {
-    systemPanel.style.display = "none";
+    const t = tabs.find((x) => x.dataset.tab === "system");
+    if (t) t.style.display = "none";
+  }
+
+  // If both screenshots and tracked processes are unavailable, ensure a
+  // visible tab is active.
+  const visibleTab = tabs.find(
+    (t) => t.style.display !== "none" && t.getAttribute("aria-selected") === "true",
+  );
+  if (!visibleTab) {
+    const firstVisible = tabs.find((t) => t.style.display !== "none");
+    if (firstVisible) activateTab(firstVisible.dataset.tab);
   }
 }
 
@@ -115,7 +182,6 @@ function fmtTimestamp(ts) {
 }
 
 function buildCard(proc, isRoot = false) {
-  // ── Linux-only extras ──────────────────────────────────────────────
   let linuxExtras = "";
 
   if (proc.cmdline && proc.cmdline.length > 0) {
@@ -129,11 +195,7 @@ function buildCard(proc, isRoot = false) {
 
   if (hasCwd || hasFds || hasIO) {
     linuxExtras += `<div class="proc-meta proc-meta-linux">`;
-    if (hasCwd)
-      linuxExtras += metaItem(
-        "CWD",
-        `<span title="${proc.cwd}">${proc.cwd}</span>`,
-      );
+    if (hasCwd) linuxExtras += metaItem("CWD", `<span title="${proc.cwd}">${proc.cwd}</span>`);
     if (hasFds) linuxExtras += metaItem("FDs", proc.open_files.length);
     if (hasIO) {
       linuxExtras += metaItem("READ", fmtBytes(proc.io_stats.read_bytes));
@@ -214,29 +276,23 @@ function refreshScreenshots() {
           screensDiv.appendChild(container);
         }
 
-        // Update label fields
         const nameEl = container.querySelector(".screen-name");
         const dimsEl = container.querySelector(".screen-dims");
         const tsEl = container.querySelector(".screen-ts");
 
-        if (nameEl)
-          nameEl.textContent = screen.monitor_name || `Display ${i + 1}`;
+        if (nameEl) nameEl.textContent = screen.monitor_name || `Display ${i + 1}`;
         if (dimsEl && screen.width && screen.height)
           dimsEl.textContent = `${screen.width}×${screen.height}`;
         if (tsEl) tsEl.textContent = fmtTimestamp(screen.timestamp);
 
-        // Only swap src if the image actually changed
         const img = container.querySelector("img");
         img.alt = screen.monitor_name || `Display ${i + 1}`;
         const newSrc = `data:${screen.mime};base64,${screen.data}`;
         if (img.src !== newSrc) img.src = newSrc;
       });
 
-      // Remove stale containers
       screensDiv.querySelectorAll(".screen-container").forEach((el) => {
-        const idx = [
-          ...screensDiv.querySelectorAll(".screen-container"),
-        ].indexOf(el);
+        const idx = [...screensDiv.querySelectorAll(".screen-container")].indexOf(el);
         if (idx >= data.screens.length) el.remove();
       });
 
@@ -254,16 +310,11 @@ const detailsOpenState = new Set();
 
 async function refreshProcess() {
   try {
-    const existingDetails = rootSection.querySelectorAll(
-      "details.children-group",
-    );
+    const existingDetails = rootSection.querySelectorAll("details.children-group");
     existingDetails.forEach((details) => {
       if (details.dataset.pid) {
-        if (details.open) {
-          detailsOpenState.add(details.dataset.pid);
-        } else {
-          detailsOpenState.delete(details.dataset.pid);
-        }
+        if (details.open) detailsOpenState.add(details.dataset.pid);
+        else detailsOpenState.delete(details.dataset.pid);
       }
     });
 
@@ -289,12 +340,8 @@ async function refreshProcess() {
         allWorkDone = allWorkDone && data.work_done;
 
         rootsHtml += `<div class="process-group">`;
-
-        if (data.root) {
-          rootsHtml += buildCard(data.root, true);
-        } else {
-          rootsHtml += `<div class="muted">Root process ${pid} exited</div>`;
-        }
+        if (data.root) rootsHtml += buildCard(data.root, true);
+        else rootsHtml += `<div class="muted">Root process ${pid} exited</div>`;
 
         if (data.child_count > 0) {
           const isOpen = detailsOpenState.has(String(pid)) ? "open" : "";
@@ -311,7 +358,7 @@ async function refreshProcess() {
         }
 
         rootsHtml += `</div>`;
-      } catch (err) {
+      } catch {
         continue;
       }
     }
@@ -321,7 +368,7 @@ async function refreshProcess() {
     rootSection.style.flexDirection = "column";
     rootSection.style.gap = "1rem";
     rootSection.innerHTML = rootsHtml;
-  } catch (err) {
+  } catch {
     rootSection.innerHTML = `<div class="muted">Monitor disabled</div>`;
   }
 }
@@ -355,24 +402,20 @@ document.getElementById("shutdown-btn").addEventListener("click", () => {
   if (!confirm("Shut down the server?")) return;
   const btn = document.getElementById("shutdown-btn");
   btn.disabled = true;
-  btn.textContent = "Shutting down…";
+  btn.innerHTML = `<span class="sd-dot"></span> Shutting down…`;
   fetch("/api/shutdown", { method: "POST" })
     .then(() => {
       statusEl.innerHTML = `<span style="color:var(--error)">● OFFLINE · Server shut down</span>`;
     })
     .catch(() => {
-      // Server likely closed the connection immediately — that's expected
       statusEl.innerHTML = `<span style="color:var(--error)">● OFFLINE · Server shut down</span>`;
     });
 });
 
-// ── System helpers (mirrors Rust formatting) ───────────────────────
+// ── System helpers ─────────────────────────────────────────────────
 
 function formatBytes(bytes) {
-  const KB = 1024,
-    MB = KB * 1024,
-    GB = MB * 1024,
-    TB = GB * 1024;
+  const KB = 1024, MB = KB * 1024, GB = MB * 1024, TB = GB * 1024;
   if (bytes >= TB) return (bytes / TB).toFixed(1) + " TB";
   if (bytes >= GB) return (bytes / GB).toFixed(1) + " GB";
   if (bytes >= MB) return (bytes / MB).toFixed(1) + " MB";
@@ -387,8 +430,6 @@ function formatUptime(secs) {
   return days > 0 ? `${days}d ${hours}h ${mins}m` : `${hours}h ${mins}m`;
 }
 
-// ── System panel rendering ─────────────────────────────────────────
-
 function kv(label, value, cls = "") {
   return `<div class="sys-kv">
     <span class="sk">${label}</span>
@@ -396,7 +437,7 @@ function kv(label, value, cls = "") {
   </div>`;
 }
 
-function usageBar(label, pct, extraClass = "") {
+function usageBar(label, pct) {
   const fill = pct == null ? 0 : Math.min(100, pct);
   const colorCls = fill >= 90 ? "crit" : fill >= 75 ? "warn" : "";
   return `<div class="sys-bar-row">
@@ -407,7 +448,6 @@ function usageBar(label, pct, extraClass = "") {
 }
 
 function renderSystemSnapshot(snap) {
-  // ── Host ────────────────────────────────────────────────────────
   const h = snap.host;
   const healthCls =
     snap.health === "healthy"
@@ -425,7 +465,6 @@ function renderSystemSnapshot(snap) {
     kv("Health", snap.health, healthCls),
   ].join("");
 
-  // ── CPU ─────────────────────────────────────────────────────────
   const cpu = snap.cpu;
   let cpuGridHtml = [
     kv("Brand", cpu.brand),
@@ -439,12 +478,11 @@ function renderSystemSnapshot(snap) {
   }
   document.getElementById("sys-cpu-grid").innerHTML = cpuGridHtml.join("");
 
-  // Core bars
   const coresEl = document.getElementById("sys-cpu-cores");
-  const maxH = 28;
+  const maxH = 32;
   coresEl.innerHTML = cpu.cores
     .map((c) => {
-      const h = Math.max(2, (c.usage_percent / 100) * maxH);
+      const hh = Math.max(2, (c.usage_percent / 100) * maxH);
       const col =
         c.usage_percent >= 90
           ? "var(--error)"
@@ -452,11 +490,10 @@ function renderSystemSnapshot(snap) {
             ? "var(--warning)"
             : "var(--accent)";
       return `<div class="sys-core-bar" title="${c.name}: ${c.usage_percent.toFixed(1)}%"
-      style="height:${h}px;background:${col}"></div>`;
+      style="height:${hh}px;background:${col}"></div>`;
     })
     .join("");
 
-  // ── Memory ──────────────────────────────────────────────────────
   const mem = snap.memory;
   document.getElementById("sys-mem-grid").innerHTML = `
     <div class="sys-bar-wrap" style="grid-column:1/-1">
@@ -471,18 +508,17 @@ function renderSystemSnapshot(snap) {
     ${mem.swap_used_bytes > 0 ? kv("Swap Used", formatBytes(mem.swap_used_bytes)) : ""}
   `;
 
-  // ── Disks ───────────────────────────────────────────────────────
   document.getElementById("sys-disk-list").innerHTML = snap.disks
     .map(
       (d) => `
     <div class="sys-item">
       <span class="sys-item-name" title="${d.name}">${d.mount_point}</span>
       <span class="sys-item-sub">${d.file_system} · ${d.kind}${d.is_removable ? " · removable" : ""}</span>
-      <div class="sys-bar-track" style="min-width:140px">
+      <div class="sys-bar-track">
         <div class="sys-bar-fill ${d.used_percent >= 95 ? "crit" : d.used_percent >= 80 ? "warn" : ""}"
           style="width:${Math.min(100, d.used_percent).toFixed(1)}%"></div>
       </div>
-      <div style="display:flex;gap:0.75rem">
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
         ${kv("Used", formatBytes(d.used_bytes))}
         ${kv("Free", formatBytes(d.available_bytes))}
         ${kv("Total", formatBytes(d.total_bytes))}
@@ -492,7 +528,6 @@ function renderSystemSnapshot(snap) {
     )
     .join("");
 
-  // ── Network ─────────────────────────────────────────────────────
   const nets = snap.networks.filter(
     (n) => n.rx_total_bytes > 0 || n.tx_total_bytes > 0,
   );
@@ -508,7 +543,7 @@ function renderSystemSnapshot(snap) {
           <div class="sys-net-badge"><span class="dir">↓</span><span class="bw">${formatBytes(n.rx_bytes_per_sec)}/s</span></div>
           <div class="sys-net-badge"><span class="dir">↑</span><span class="bw">${formatBytes(n.tx_bytes_per_sec)}/s</span></div>
         </div>
-        <div style="display:flex;gap:0.75rem">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
           ${kv("RX Total", formatBytes(n.rx_total_bytes))}
           ${kv("TX Total", formatBytes(n.tx_total_bytes))}
         </div>
@@ -517,7 +552,6 @@ function renderSystemSnapshot(snap) {
           )
           .join("");
 
-  // ── GPU ─────────────────────────────────────────────────────────
   const gpuSection = document.getElementById("sys-gpu-section");
   if (snap.gpus && snap.gpus.length > 0) {
     gpuSection.style.display = "";
@@ -528,7 +562,7 @@ function renderSystemSnapshot(snap) {
         <span class="sys-item-name">${g.name}</span>
         ${
           g.usage_percent != null
-            ? `<div class="sys-bar-track" style="min-width:120px">
+            ? `<div class="sys-bar-track">
           <div class="sys-bar-fill ${g.usage_percent >= 90 ? "crit" : g.usage_percent >= 75 ? "warn" : ""}"
             style="width:${Math.min(100, g.usage_percent).toFixed(1)}%"></div>
         </div>`
@@ -556,7 +590,6 @@ function renderSystemSnapshot(snap) {
     gpuSection.style.display = "none";
   }
 
-  // ── Battery ─────────────────────────────────────────────────────
   const batSection = document.getElementById("sys-battery-section");
   if (snap.battery) {
     batSection.style.display = "";
@@ -576,7 +609,6 @@ function renderSystemSnapshot(snap) {
     batSection.style.display = "none";
   }
 
-  // ── Thermals ────────────────────────────────────────────────────
   const thermalSection = document.getElementById("sys-thermal-section");
   if (snap.temperatures && snap.temperatures.length > 0) {
     thermalSection.style.display = "";
@@ -599,8 +631,6 @@ function renderSystemSnapshot(snap) {
   }
 }
 
-// ── System refresh ─────────────────────────────────────────────────
-
 function refreshSystem() {
   fetch("/api/system")
     .then((r) => {
@@ -608,9 +638,7 @@ function refreshSystem() {
       return r.json();
     })
     .then((snap) => renderSystemSnapshot(snap))
-    .catch(() => {
-      /* silently skip if endpoint unavailable */
-    });
+    .catch(() => {});
 }
 
 let screenshotInterval = null;
@@ -634,7 +662,6 @@ loadConfig().then(() => {
     topInterval = setInterval(refreshTopProcesses, 2000);
   }
 
-  // System panel — always enabled; gracefully no-ops if /system is absent
   if (config.system_monitor) {
     refreshSystem();
     systemInterval = setInterval(refreshSystem, 2000);

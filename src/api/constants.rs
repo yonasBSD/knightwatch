@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
-pub static VIEW_HTML: &str = include_str!("assets/view.html");
-pub static VIEW_CSS: &str = include_str!("assets/view.css");
-pub static VIEW_JS: &str = include_str!("assets/view.js");
+pub static INDEX_HTML: &str = include_str!("assets/index.html");
+pub static MAIN_CSS: &str = include_str!("assets/main.css");
+pub static MAIN_JS: &str = include_str!("assets/main.js");
 
 pub static START_TIME: OnceLock<std::time::Instant> = OnceLock::new();

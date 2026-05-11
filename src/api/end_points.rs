@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{StatusCode, header},
-    response::{Html, Json, Response},
+    response::{Html, Json, Redirect, Response},
 };
 use base64::{Engine as _, engine::general_purpose};
 
@@ -73,23 +73,27 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Json<
     Ok(Json(ScreenshotResponse { screens, count }))
 }
 
-pub async fn dashboard() -> Html<&'static str> {
-    Html(VIEW_HTML)
+pub async fn redirect_to_dashboard() -> Redirect {
+    Redirect::permanent("/dashboard")
 }
 
-pub async fn view_css() -> Response<Body> {
+pub async fn dashboard() -> Html<&'static str> {
+    Html(INDEX_HTML)
+}
+
+pub async fn main_css() -> Response<Body> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/css")
-        .body(Body::from(VIEW_CSS))
+        .body(Body::from(MAIN_CSS))
         .unwrap()
 }
 
-pub async fn view_js() -> Response<Body> {
+pub async fn main_js() -> Response<Body> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/javascript")
-        .body(Body::from(VIEW_JS))
+        .body(Body::from(MAIN_JS))
         .unwrap()
 }
 

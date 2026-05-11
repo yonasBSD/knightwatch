@@ -41,9 +41,10 @@ fn create_api_router(cancel_token: CancellationToken) -> Router {
 fn create_web_dashboard() -> Router {
     Router::new()
         // ── Web dashboard ────────────────────────────────────────────────────
+        .route("/", get(redirect_to_dashboard))
         .route("/dashboard", get(dashboard))
-        .route("/view.css", get(view_css))
-        .route("/view.js", get(view_js))
+        .route("/main.css", get(main_css))
+        .route("/main.js", get(main_js))
 }
 
 pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {

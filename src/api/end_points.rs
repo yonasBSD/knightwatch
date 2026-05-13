@@ -1,12 +1,11 @@
 use axum::{
-    body::Body,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
-    response::{Html, Json, Redirect, Response},
+    http::StatusCode,
+    response::Json,
 };
 use base64::{Engine as _, engine::general_purpose};
 
-use super::{constants::*, models::*};
+use super::models::*;
 use crate::{
     process_tracker::{self, ProcessSnapshot, ProcessStatus, ProcessTree},
     system_monitor,
@@ -21,7 +20,10 @@ pub async fn shutdown(
 }
 
 pub async fn health() -> Json<HealthResponse> {
-    let uptime = START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0);
+    let uptime = super::handlers::START_TIME
+        .get()
+        .map(|t| t.elapsed().as_secs())
+        .unwrap_or(0);
     Json(HealthResponse {
         status: "healthy".to_string(),
         timestamp: now_rfc3339(),
@@ -71,30 +73,6 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Json<
         .collect();
     let count = screens.len();
     Ok(Json(ScreenshotResponse { screens, count }))
-}
-
-pub async fn redirect_to_dashboard() -> Redirect {
-    Redirect::permanent("/dashboard")
-}
-
-pub async fn dashboard() -> Html<&'static str> {
-    Html(INDEX_HTML)
-}
-
-pub async fn main_css() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/css")
-        .body(Body::from(MAIN_CSS))
-        .unwrap()
-}
-
-pub async fn main_js() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/javascript")
-        .body(Body::from(MAIN_JS))
-        .unwrap()
 }
 
 // ---------------------------------------------------------------------------

@@ -50,3 +50,8 @@ pub struct TopProcessesParams {
     pub limit: Option<usize>,
     pub sort: String,
 }
+
+#[cfg(not(debug_assertions))]
+#[derive(rust_embed::Embed)]
+#[folder = "Dashboard/dist/"]
+pub struct DashboardAssets;

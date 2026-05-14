@@ -17,7 +17,7 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 - **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
 - **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
 - **Linux Extended Telemetry** — On Linux, child process snapshots include working directory, command line, open file descriptors, and I/O stats
-- **System Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
+- **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
 - **Telegram Bot** — Optional bot for remote monitoring and push notifications on process and system events
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 - **Structured Logging** — Tracing via `tracing-subscriber` with configurable log levels via `RUST_LOG`
@@ -133,7 +133,7 @@ Returns a single `ProcessInfo` object, or `404` if the root process has exited.
   "top_processes": false,
   "limit_processes": 5,
   "telegram_bot": false,
-  "system_monitor": false
+  "system_resources": false
 }
 ```
 
@@ -249,9 +249,9 @@ Pass the PID of the root process you want to monitor. The server will start on `
 | `--host <HOST>` | `0.0.0.0` | Host address for the API server |
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
 | `--no-api` | `false` | Disable the API server entirely |
-| `--no-dashboard` | `false` | Disable the web dashboard entirely |
+| `--no-dashboard` | `false` | Disable the web dashboard |
 | `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
-| `--system-monitor` | `false` | Enable the system monitor (CPU, memory, disks, network, battery, thermals) |
+| `--system-resources` | `false` | Enable the system resources (CPU, memory, disks, network, battery, thermals) |
 | `--telegram` | `false` | Enable the Telegram bot |
 | `--with-webhook` | `false` | Enable webhook dispatching |
 | `--webhook <URL>` | — | Webhook URL to POST process events to (repeatable) |
@@ -261,7 +261,13 @@ Pass the PID of the root process you want to monitor. The server will start on `
 To run without the API server:
 
 ```bash
-knightwatch --pid <PID> --no-server
+knightwatch --pid <PID> --no-api
+```
+
+To run without the web dashboard:
+
+```bash
+knightwatch --pid <PID> --no-dashboard
 ```
 
 To run without screen capture (e.g. on a headless server or where permissions are restricted):
@@ -270,10 +276,10 @@ To run without screen capture (e.g. on a headless server or where permissions ar
 knightwatch --pid <PID> --blind
 ```
 
-To enable the system monitor:
+To enable the system resources:
 
 ```bash
-knightwatch --pid <PID> --system-monitor
+knightwatch --pid <PID> --system-resources
 ```
 
 To enable webhook dispatching with one or more targets:
@@ -298,9 +304,9 @@ RUST_LOG=debug knightwatch --pid <PID>
 
 ---
 
-## System Monitor
+## System resources Monitor
 
-When enabled with `--system-monitor`, Knightwatch polls hardware metrics every second and exposes them via the `/system` family of endpoints. It also emits threshold-based events to the Telegram bot and webhook dispatcher.
+When enabled with `--system-resources`, Knightwatch polls hardware metrics every second and exposes them via the `/system` family of endpoints. It also emits threshold-based events to the Telegram bot and webhook dispatcher.
 
 ### Default Thresholds
 
@@ -310,22 +316,6 @@ When enabled with `--system-monitor`, Knightwatch polls hardware metrics every s
 | Memory usage | ≥ 90% |
 | Disk usage (per mount) | ≥ 90% |
 | Battery charge | ≤ 15% (discharging only) |
-
-### System Monitor Events
-
-The following events are emitted by the system monitor (see [Webhooks](#webhooks) and [Telegram Bot](#telegram-bot)):
-
-| Event | Description |
-| --- | --- |
-| `system.initial_snapshot` | Full snapshot emitted on the first tick |
-| `system.tick` | Full snapshot emitted every subsequent tick |
-| `system.cpu_threshold_exceeded` | CPU usage crossed the warning threshold |
-| `system.memory_threshold_exceeded` | Memory usage crossed the warning threshold |
-| `system.disk_threshold_exceeded` | A disk's used percentage crossed the warning threshold |
-| `system.battery_low` | Battery is discharging and charge fell below the threshold |
-| `system.battery_state_changed` | Battery state changed (e.g. plugged in / unplugged) |
-
----
 
 ## Telegram Bot
 
@@ -369,7 +359,7 @@ The bot sends push notifications for all process events when tracking at least o
 - ✅ **All children gone** — all child processes have exited
 - 💀 **Root process exited** — the root process itself has stopped
 
-When `--system-monitor` is also enabled, the bot additionally sends alerts for:
+When `--system-resources` is also enabled, the bot additionally sends alerts for:
 
 - ⚠️ **CPU threshold exceeded** — aggregate CPU usage above 90%
 - ⚠️ **Memory threshold exceeded** — memory usage above 90%
@@ -417,17 +407,17 @@ Webhook URLs can also be stored in persistent config (merged with any provided v
 | `process.root_exited` | Root process exited |
 | `process.work_complete` | Work-done condition met |
 
-**System monitor event names** (requires `--system-monitor`):
+**System resources event names** (requires `--system-resources`):
 
 | Event | Description | Key `data` fields |
 | --- | --- | --- |
-| `system.initial_snapshot` | First hardware snapshot | `snapshot` |
-| `system.tick` | Periodic hardware snapshot | `snapshot` |
-| `system.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
-| `system.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
-| `system.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
-| `system.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
-| `system.battery_state_changed` | Battery state changed | `state` |
+| `resources.initial_snapshot` | First hardware snapshot | `snapshot` |
+| `resources.tick` | Periodic hardware snapshot | `snapshot` |
+| `resources.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
+| `resources.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
+| `resources.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
+| `resources.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
+| `resources.battery_state_changed` | Battery state changed | `state` |
 
 Failed deliveries are retried up to 3 times with exponential backoff.
 

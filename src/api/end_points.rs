@@ -8,7 +8,7 @@ use base64::{Engine as _, engine::general_purpose};
 use super::models::*;
 use crate::{
     process_tracker::{self, ProcessSnapshot, ProcessStatus, ProcessTree},
-    system_monitor,
+    system_resources,
     utils::now_rfc3339,
 };
 
@@ -40,7 +40,7 @@ pub async fn config() -> Json<ConfigResponse> {
         top_processes: args.top_processes,
         limit_processes: args.limit_processes,
         telegram_bot: args.telegram,
-        system_monitor: args.system_monitor,
+        system_resources: args.system_resources,
     })
 }
 
@@ -182,15 +182,15 @@ pub async fn top_processes(
 }
 
 // ---------------------------------------------------------------------------
-// System Monitor endpoints
+// System Resources endpoints
 // ---------------------------------------------------------------------------
 
 /// `GET /system`
 ///
 /// Returns the current System Snapshot.
 pub async fn system_snapshot()
--> Result<Json<system_monitor::SystemSnapshot>, (StatusCode, Json<ErrorResponse>)> {
-    match system_monitor::get_snapshot().await {
+-> Result<Json<system_resources::SystemSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_resources::get_snapshot().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -206,8 +206,8 @@ pub async fn system_snapshot()
 ///
 /// Returns the current Cpu Snapshot.
 pub async fn cpu_snapshot()
--> Result<Json<system_monitor::CpuSnapshot>, (StatusCode, Json<ErrorResponse>)> {
-    match system_monitor::get_cpu().await {
+-> Result<Json<system_resources::CpuSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_resources::get_cpu().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -223,8 +223,8 @@ pub async fn cpu_snapshot()
 ///
 /// Returns the current Memory Snapshot.
 pub async fn memory_snapshot()
--> Result<Json<system_monitor::MemorySnapshot>, (StatusCode, Json<ErrorResponse>)> {
-    match system_monitor::get_memory().await {
+-> Result<Json<system_resources::MemorySnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_resources::get_memory().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -239,30 +239,30 @@ pub async fn memory_snapshot()
 /// `GET /disks`
 ///
 /// Returns the Disks Snapshots.
-pub async fn disks_snapshots() -> Json<Vec<system_monitor::DiskSnapshot>> {
-    Json(system_monitor::get_disks().await)
+pub async fn disks_snapshots() -> Json<Vec<system_resources::DiskSnapshot>> {
+    Json(system_resources::get_disks().await)
 }
 
 /// `GET /networks`
 ///
 /// Returns the Networks Snapshots.
-pub async fn networks_snapshot() -> Json<Vec<system_monitor::NetworkSnapshot>> {
-    Json(system_monitor::get_networks().await)
+pub async fn networks_snapshot() -> Json<Vec<system_resources::NetworkSnapshot>> {
+    Json(system_resources::get_networks().await)
 }
 
 /// `GET /gpus`
 ///
 /// Returns the Gpus Snapshots.
-pub async fn gpus_snapshots() -> Json<Vec<system_monitor::GpuSnapshot>> {
-    Json(system_monitor::get_gpus().await)
+pub async fn gpus_snapshots() -> Json<Vec<system_resources::GpuSnapshot>> {
+    Json(system_resources::get_gpus().await)
 }
 
 /// `GET /battery`
 ///
 /// Returns the current Battery Snapshot.
 pub async fn battery_snapshot()
--> Result<Json<system_monitor::BatterySnapshot>, (StatusCode, Json<ErrorResponse>)> {
-    match system_monitor::get_battery().await {
+-> Result<Json<system_resources::BatterySnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match system_resources::get_battery().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -278,8 +278,8 @@ pub async fn battery_snapshot()
 ///
 /// Returns the current Host Info Snapshot.
 pub async fn host_info_snapshot()
--> Result<Json<system_monitor::HostInfo>, (StatusCode, Json<ErrorResponse>)> {
-    match system_monitor::get_host_info().await {
+-> Result<Json<system_resources::HostInfo>, (StatusCode, Json<ErrorResponse>)> {
+    match system_resources::get_host_info().await {
         Some(snap) => Ok(Json(snap)),
         None => Err((
             StatusCode::NOT_FOUND,
@@ -294,6 +294,6 @@ pub async fn host_info_snapshot()
 /// `GET /temperatures`
 ///
 /// Returns the Temperatures Snapshots.
-pub async fn temperatures_snapshots() -> Json<Vec<system_monitor::ThermalSnapshot>> {
-    Json(system_monitor::get_temperatures().await)
+pub async fn temperatures_snapshots() -> Json<Vec<system_resources::ThermalSnapshot>> {
+    Json(system_resources::get_temperatures().await)
 }

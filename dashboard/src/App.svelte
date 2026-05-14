@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import "./global.css";
   import ScreensPane from "./lib/components/ScreensPane.svelte";
-  import SystemPane from "./lib/components/SystemPane.svelte";
+  import SystemResourcesPane from "./lib/components/SystemResourcesPane.svelte";
   import ProcessesPane from "./lib/components/ProcessesPane.svelte";
 
   // ── State ──────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@
 
   // Tab visibility driven by config
   let showScreens = $derived(!config || !config.blind);
-  let showSystem = $derived(!config || config.system_monitor !== false);
+  let showSystem = $derived(!config || config.system_resources !== false);
   let showProcesses = $derived(
     !config ||
       config.top_processes !== false ||
@@ -63,7 +63,7 @@
         top_processes: false,
         limit_processes: 5,
         telegram_bot: false,
-        system_monitor: false,
+        system_resources: false,
       };
     }
 
@@ -76,7 +76,7 @@
     requestAnimationFrame(() => {
       const visibleTabs = TAB_NAMES.filter((t) => {
         if (t === "screens" && config.blind) return false;
-        if (t === "system" && !config.system_monitor) return false;
+        if (t === "system" && !config.system_resources) return false;
         return true;
       });
       if (!visibleTabs.includes(activeTab)) {
@@ -206,9 +206,9 @@
     </section>
 
     <section class="pane" class:active={activeTab === "system"} role="tabpanel">
-      <SystemPane
+      <SystemResourcesPane
         active={activeTab === "system"}
-        enabled={config.system_monitor}
+        enabled={config.system_resources}
       />
     </section>
 

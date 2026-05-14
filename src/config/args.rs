@@ -54,9 +54,9 @@ pub struct CliArgs {
     #[arg(long, default_value_t = 5)]
     pub limit_processes: usize,
 
-    /// Enable system monitor
+    /// Enable system resources
     #[arg(long, default_value_t = false)]
-    pub system_monitor: bool,
+    pub system_resources: bool,
 }
 
 #[derive(Subcommand, Debug)]

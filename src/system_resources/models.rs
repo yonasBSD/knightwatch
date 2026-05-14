@@ -1,5 +1,5 @@
 pub use super::{
-    enums::{BatteryState, SystemHealth, SystemMonitorEvent},
+    enums::{BatteryState, SystemHealth, SystemResourcesEvent},
     structs::{
         BatterySnapshot, CpuSnapshot, DiskSnapshot, GpuSnapshot, HostInfo, MemorySnapshot,
         NetworkSnapshot, SystemSnapshot, ThermalSnapshot,

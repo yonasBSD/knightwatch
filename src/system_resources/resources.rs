@@ -10,13 +10,13 @@ use tokio::{
 use super::{enums::*, structs::*, utils::*};
 use crate::prelude::*;
 
-pub struct SystemMonitorChannels {
-    pub query_tx: mpsc::Sender<SystemMonitorQuery>,
-    pub query_rx: Option<mpsc::Receiver<SystemMonitorQuery>>,
-    pub event_tx: broadcast::Sender<SystemMonitorEvent>,
+pub struct SystemResourcesChannels {
+    pub query_tx: mpsc::Sender<SystemResourcesQuery>,
+    pub query_rx: Option<mpsc::Receiver<SystemResourcesQuery>>,
+    pub event_tx: broadcast::Sender<SystemResourcesEvent>,
 }
 
-impl SystemMonitorChannels {
+impl SystemResourcesChannels {
     pub fn new() -> Self {
         let (query_tx, query_rx) = mpsc::channel(1024);
         let (event_tx, _) = broadcast::channel(64);
@@ -27,19 +27,19 @@ impl SystemMonitorChannels {
         }
     }
 
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<SystemMonitorQuery>> {
+    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<SystemResourcesQuery>> {
         self.query_rx
             .take()
-            .ok_or_else(|| Error::SystemMonitor("Query receiver already taken".into()))
+            .ok_or_else(|| Error::SystemResources("Query receiver already taken".into()))
     }
 }
 
-struct SystemMonitorState {
+struct SystemResourcesState {
     last_snapshot: Option<SystemSnapshot>,
     last_battery_state: Option<BatteryState>,
 }
 
-impl SystemMonitorState {
+impl SystemResourcesState {
     fn new() -> Self {
         Self {
             last_snapshot: None,
@@ -48,9 +48,9 @@ impl SystemMonitorState {
     }
 }
 
-struct SystemMonitor {
-    state: SystemMonitorState,
-    channels: SystemMonitorChannels,
+struct SystemResources {
+    state: SystemResourcesState,
+    channels: SystemResourcesChannels,
     sys: System,
     disks: Disks,
     networks: Networks,
@@ -65,11 +65,11 @@ struct SystemMonitor {
     uptime_started: std::time::Instant,
 }
 
-impl SystemMonitor {
+impl SystemResources {
     pub fn new() -> Self {
         Self {
-            state: SystemMonitorState::new(),
-            channels: SystemMonitorChannels::new(),
+            state: SystemResourcesState::new(),
+            channels: SystemResourcesChannels::new(),
             sys: System::new_with_specifics(
                 sysinfo::RefreshKind::nothing()
                     .with_cpu(CpuRefreshKind::everything())
@@ -96,12 +96,12 @@ impl SystemMonitor {
         self
     }
 
-    fn emit_event(&self, event: SystemMonitorEvent) {
+    fn emit_event(&self, event: SystemResourcesEvent) {
         // Err means no subscribers — that's fine.
         let _ = self.channels.event_tx.send(event);
     }
 
-    async fn start_monitoring_loop(mut self) -> Result<()> {
+    async fn start_resource_loop(mut self) -> Result<()> {
         let mut query_rx = self
             .channels
             .take_query_rx()
@@ -123,18 +123,18 @@ impl SystemMonitor {
     // Query handler
     // -----------------------------------------------------------------------
 
-    fn handle_query(&self, query: SystemMonitorQuery) {
+    fn handle_query(&self, query: SystemResourcesQuery) {
         match query {
-            SystemMonitorQuery::Snapshot { response } => {
+            SystemResourcesQuery::Snapshot { response } => {
                 let _ = response.send(self.state.last_snapshot.clone());
             }
-            SystemMonitorQuery::Cpu { response } => {
+            SystemResourcesQuery::Cpu { response } => {
                 let _ = response.send(self.state.last_snapshot.as_ref().map(|s| s.cpu.clone()));
             }
-            SystemMonitorQuery::Memory { response } => {
+            SystemResourcesQuery::Memory { response } => {
                 let _ = response.send(self.state.last_snapshot.as_ref().map(|s| s.memory.clone()));
             }
-            SystemMonitorQuery::Disks { response } => {
+            SystemResourcesQuery::Disks { response } => {
                 let _ = response.send(
                     self.state
                         .last_snapshot
@@ -143,7 +143,7 @@ impl SystemMonitor {
                         .unwrap_or_default(),
                 );
             }
-            SystemMonitorQuery::Networks { response } => {
+            SystemResourcesQuery::Networks { response } => {
                 let _ = response.send(
                     self.state
                         .last_snapshot
@@ -152,7 +152,7 @@ impl SystemMonitor {
                         .unwrap_or_default(),
                 );
             }
-            SystemMonitorQuery::Gpus { response } => {
+            SystemResourcesQuery::Gpus { response } => {
                 let _ = response.send(
                     self.state
                         .last_snapshot
@@ -161,7 +161,7 @@ impl SystemMonitor {
                         .unwrap_or_default(),
                 );
             }
-            SystemMonitorQuery::Battery { response } => {
+            SystemResourcesQuery::Battery { response } => {
                 let _ = response.send(
                     self.state
                         .last_snapshot
@@ -169,10 +169,10 @@ impl SystemMonitor {
                         .and_then(|s| s.battery.clone()),
                 );
             }
-            SystemMonitorQuery::HostInfo { response } => {
+            SystemResourcesQuery::HostInfo { response } => {
                 let _ = response.send(self.build_host_info().into());
             }
-            SystemMonitorQuery::Temperatures { response } => {
+            SystemResourcesQuery::Temperatures { response } => {
                 let _ = response.send(
                     self.state
                         .last_snapshot
@@ -193,14 +193,14 @@ impl SystemMonitor {
         let snapshot = self.build_snapshot();
         // CPU
         if snapshot.cpu.usage_percent >= self.thresholds.cpu_warn {
-            self.emit_event(SystemMonitorEvent::CpuThresholdExceeded {
+            self.emit_event(SystemResourcesEvent::CpuThresholdExceeded {
                 usage_percent: snapshot.cpu.usage_percent,
                 threshold: self.thresholds.cpu_warn,
             });
         }
         // Memory
         if snapshot.memory.used_percent >= self.thresholds.memory_warn {
-            self.emit_event(SystemMonitorEvent::MemoryThresholdExceeded {
+            self.emit_event(SystemResourcesEvent::MemoryThresholdExceeded {
                 used_percent: snapshot.memory.used_percent,
                 threshold: self.thresholds.memory_warn,
             });
@@ -208,7 +208,7 @@ impl SystemMonitor {
         // Disks
         for disk in &snapshot.disks {
             if disk.used_percent >= self.thresholds.disk_warn {
-                self.emit_event(SystemMonitorEvent::DiskThresholdExceeded {
+                self.emit_event(SystemResourcesEvent::DiskThresholdExceeded {
                     mount_point: disk.mount_point.clone(),
                     used_percent: disk.used_percent,
                     threshold: self.thresholds.disk_warn,
@@ -220,27 +220,27 @@ impl SystemMonitor {
             if bat.state == BatteryState::Discharging
                 && bat.charge_percent <= self.thresholds.battery_low
             {
-                self.emit_event(SystemMonitorEvent::BatteryLow {
+                self.emit_event(SystemResourcesEvent::BatteryLow {
                     charge_percent: bat.charge_percent,
                     threshold: self.thresholds.battery_low,
                 });
             }
             let prev_state = self.state.last_battery_state.take();
             if prev_state.as_ref() != Some(&bat.state) {
-                self.emit_event(SystemMonitorEvent::BatteryStateChanged {
+                self.emit_event(SystemResourcesEvent::BatteryStateChanged {
                     state: bat.state.clone(),
                 });
             }
             self.state.last_battery_state = Some(bat.state.clone());
         }
         if self.first_tick {
-            info!("System Monitor: initial snapshot ready");
-            self.emit_event(SystemMonitorEvent::InitialSnapshot {
+            info!("System Resources: initial snapshot ready");
+            self.emit_event(SystemResourcesEvent::InitialSnapshot {
                 snapshot: snapshot.clone(),
             });
             self.first_tick = false;
         } else {
-            self.emit_event(SystemMonitorEvent::Tick {
+            self.emit_event(SystemResourcesEvent::Tick {
                 snapshot: snapshot.clone(),
             });
         }
@@ -376,26 +376,26 @@ impl SystemMonitor {
     }
 }
 
-pub static SYSTEM_MONITOR_QUERY_SENDER: OnceLock<mpsc::Sender<SystemMonitorQuery>> =
+pub static SYSTEM_RESOURCES_QUERY_SENDER: OnceLock<mpsc::Sender<SystemResourcesQuery>> =
     OnceLock::new();
-pub static SYSTEM_MONITOR_EVENT_SENDER: OnceLock<broadcast::Sender<SystemMonitorEvent>> =
+pub static SYSTEM_RESOURCES_EVENT_SENDER: OnceLock<broadcast::Sender<SystemResourcesEvent>> =
     OnceLock::new();
 
-pub fn init_system_monitor() {
-    if !get_config().args.system_monitor {
+pub fn init_system_resources() {
+    if !get_config().args.system_resources {
         return;
     }
-    let monitor = SystemMonitor::new();
-    SYSTEM_MONITOR_QUERY_SENDER
-        .set(monitor.channels.query_tx.clone())
+    let resources = SystemResources::new();
+    SYSTEM_RESOURCES_QUERY_SENDER
+        .set(resources.channels.query_tx.clone())
         .unwrap();
-    SYSTEM_MONITOR_EVENT_SENDER
-        .set(monitor.channels.event_tx.clone())
+    SYSTEM_RESOURCES_EVENT_SENDER
+        .set(resources.channels.event_tx.clone())
         .unwrap();
     tokio::spawn(async move {
-        if let Err(e) = monitor.start_monitoring_loop().await {
-            error!(?e, "system monitor loop exited with error");
+        if let Err(e) = resources.start_resource_loop().await {
+            error!(?e, "system resources loop exited with error");
         }
     });
-    info!("System Monitor started");
+    info!("System Resources started");
 }

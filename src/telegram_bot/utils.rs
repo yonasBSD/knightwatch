@@ -1,7 +1,7 @@
 use super::models::TelegramDisplay;
 use crate::{
     process_tracker::ProcessTrackerEvent,
-    system_monitor::{BatteryState, SystemHealth, SystemMonitorEvent},
+    system_resources::{BatteryState, SystemHealth, SystemResourcesEvent},
 };
 
 const SPECIAL: &[char] = &[
@@ -57,14 +57,14 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
     }
 }
 
-pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String> {
+pub fn format_system_resources_event(event: &SystemResourcesEvent) -> Option<String> {
     match event {
-        SystemMonitorEvent::InitialSnapshot { snapshot } => {
+        SystemResourcesEvent::InitialSnapshot { snapshot } => {
             let display = TelegramDisplay(snapshot);
-            Some(format!("🟢 *System Monitor Started*\n\n{display}"))
+            Some(format!("🟢 *System Resouces Started*\n\n{display}"))
         }
-        SystemMonitorEvent::Tick { .. } => None,
-        SystemMonitorEvent::CpuThresholdExceeded {
+        SystemResourcesEvent::Tick { .. } => None,
+        SystemResourcesEvent::CpuThresholdExceeded {
             usage_percent,
             threshold,
         } => Some(format!(
@@ -72,7 +72,7 @@ pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String>
                  ├ Usage: `{usage_percent:.1}%`\n\
                  └ Threshold: `{threshold:.1}%`"
         )),
-        SystemMonitorEvent::MemoryThresholdExceeded {
+        SystemResourcesEvent::MemoryThresholdExceeded {
             used_percent,
             threshold,
         } => Some(format!(
@@ -80,7 +80,7 @@ pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String>
                  ├ Usage: `{used_percent:.1}%`\n\
                  └ Threshold: `{threshold:.1}%`"
         )),
-        SystemMonitorEvent::DiskThresholdExceeded {
+        SystemResourcesEvent::DiskThresholdExceeded {
             mount_point,
             used_percent,
             threshold,
@@ -91,7 +91,7 @@ pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String>
                  └ Threshold: `{threshold:.1}%`",
             mount = escape_mdv2(mount_point),
         )),
-        SystemMonitorEvent::BatteryLow {
+        SystemResourcesEvent::BatteryLow {
             charge_percent,
             threshold,
         } => Some(format!(
@@ -99,7 +99,7 @@ pub fn format_system_monitor_event(event: &SystemMonitorEvent) -> Option<String>
                  ├ Charge: `{charge_percent:.1}%`\n\
                  └ Threshold: `{threshold:.1}%`"
         )),
-        SystemMonitorEvent::BatteryStateChanged { state } => {
+        SystemResourcesEvent::BatteryStateChanged { state } => {
             let (emoji, label) = match state {
                 BatteryState::Charging => ("⚡", "Charging"),
                 BatteryState::Discharging => ("🔋", "Discharging"),

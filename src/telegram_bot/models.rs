@@ -98,7 +98,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::Proce
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_monitor::SystemSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_resources::SystemSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
 

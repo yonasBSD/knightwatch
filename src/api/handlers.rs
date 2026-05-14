@@ -31,7 +31,7 @@ fn create_api_router(cancel_token: CancellationToken) -> Router {
         .route("/process/children/{root_pid}", get(process_children)) // children only
         .route("/process/status/{root_pid}", get(process_status)) // lightweight summary
         .route("/top-processes", get(top_processes)) // top processes
-        // ── System Monitoring ──────────────────────────────────────────────
+        // ── System Resources ──────────────────────────────────────────────
         .route("/system", get(system_snapshot)) // full system snapshot
         .route("/cpu", get(cpu_snapshot)) // cpu snapshot
         .route("/memory", get(memory_snapshot)) // memory snapshot

@@ -4,7 +4,7 @@ use tokio::sync::oneshot;
 use super::structs::*;
 
 #[derive(Debug, Clone, Serialize)]
-pub enum SystemMonitorEvent {
+pub enum SystemResourcesEvent {
     /// Emitted on the very first tick; establishes a baseline for all metrics.
     InitialSnapshot { snapshot: SystemSnapshot },
 
@@ -32,7 +32,7 @@ pub enum SystemMonitorEvent {
 }
 
 #[derive(Debug)]
-pub enum SystemMonitorQuery {
+pub enum SystemResourcesQuery {
     /// Returns the most recent full snapshot.
     Snapshot {
         response: oneshot::Sender<Option<SystemSnapshot>>,

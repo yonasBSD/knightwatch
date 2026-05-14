@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::{process_tracker::ProcessTrackerEvent, system_monitor::SystemMonitorEvent};
+use crate::{process_tracker::ProcessTrackerEvent, system_resources::SystemResourcesEvent};
 
 #[derive(Debug, serde::Serialize)]
 pub struct WebhookPayload {
@@ -53,46 +53,47 @@ impl From<&ProcessTrackerEvent> for WebhookPayload {
     }
 }
 
-impl From<&SystemMonitorEvent> for WebhookPayload {
-    fn from(event: &SystemMonitorEvent) -> Self {
+impl From<&SystemResourcesEvent> for WebhookPayload {
+    fn from(event: &SystemResourcesEvent) -> Self {
         let (event_name, data) = match event {
-            SystemMonitorEvent::InitialSnapshot { snapshot } => {
-                ("system.initial_snapshot", json!({ "snapshot": snapshot }))
+            SystemResourcesEvent::InitialSnapshot { snapshot } => (
+                "resources.initial_snapshot",
+                json!({ "snapshot": snapshot }),
+            ),
+            SystemResourcesEvent::Tick { snapshot } => {
+                ("resources.tick", json!({ "snapshot": snapshot }))
             }
-            SystemMonitorEvent::Tick { snapshot } => {
-                ("system.tick", json!({ "snapshot": snapshot }))
-            }
-            SystemMonitorEvent::CpuThresholdExceeded {
+            SystemResourcesEvent::CpuThresholdExceeded {
                 usage_percent,
                 threshold,
             } => (
-                "system.cpu_threshold_exceeded",
+                "resources.cpu_threshold_exceeded",
                 json!({ "usage_percent": usage_percent, "threshold": threshold }),
             ),
-            SystemMonitorEvent::MemoryThresholdExceeded {
+            SystemResourcesEvent::MemoryThresholdExceeded {
                 used_percent,
                 threshold,
             } => (
-                "system.memory_threshold_exceeded",
+                "resources.memory_threshold_exceeded",
                 json!({ "usage_percent": used_percent, "threshold": threshold }),
             ),
-            SystemMonitorEvent::DiskThresholdExceeded {
+            SystemResourcesEvent::DiskThresholdExceeded {
                 mount_point,
                 used_percent,
                 threshold,
             } => (
-                "system.disk_threshold_exceeded",
+                "resources.disk_threshold_exceeded",
                 json!({ "mount_point": mount_point, "usage_percent": used_percent, "threshold": threshold }),
             ),
-            SystemMonitorEvent::BatteryLow {
+            SystemResourcesEvent::BatteryLow {
                 charge_percent,
                 threshold,
             } => (
-                "system.battery_low",
+                "resources.battery_low",
                 json!({ "charge_percent": charge_percent, "threshold": threshold }),
             ),
-            SystemMonitorEvent::BatteryStateChanged { state } => {
-                ("system.battery_state_changed", json!({ "state": state }))
+            SystemResourcesEvent::BatteryStateChanged { state } => {
+                ("resources.battery_state_changed", json!({ "state": state }))
             }
         };
         Self::new(event_name, data)

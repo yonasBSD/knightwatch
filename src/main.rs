@@ -4,7 +4,7 @@ mod errors;
 mod prelude;
 mod process_tracker;
 mod screen_capture;
-mod system_monitor;
+mod system_resources;
 mod telegram_bot;
 mod telemetry;
 mod types;
@@ -20,7 +20,7 @@ async fn main() -> Result<(), errors::Error> {
     }
     screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();
-    system_monitor::init_system_monitor();
+    system_resources::init_system_resources();
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let vite = api::init_api_server(cancel_token.clone())?;
     webhook::init_webhook_dispatcher(cancel_token.clone());

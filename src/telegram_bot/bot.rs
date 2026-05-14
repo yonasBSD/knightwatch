@@ -13,7 +13,7 @@ use super::{
     models::{Command, TelegramDisplay, TelegramBot},
     utils::escape_mdv2,
 };
-use crate::{prelude::*, process_tracker, system_monitor, utils::recv_or_pending};
+use crate::{prelude::*, process_tracker, system_resources, utils::recv_or_pending};
 
 pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let config = get_config();
@@ -65,8 +65,8 @@ pub async fn process_tracker_event_notifier(
     cancel_token: CancellationToken,
 ) {
     let mut process_tracker_rx = process_tracker::subscribe_events();
-    let mut system_monitor_rx = system_monitor::subscribe_events();
-    if process_tracker_rx.is_none() && system_monitor_rx.is_none() {
+    let mut system_resources_rx = system_resources::subscribe_events();
+    if process_tracker_rx.is_none() && system_resources_rx.is_none() {
         return;
     }
     let mut chat_ids: Vec<ChatId> = vec![];
@@ -84,8 +84,8 @@ pub async fn process_tracker_event_notifier(
                 let message = super::utils::format_process_tracker_event(&event);
                 broadcast_message(&bot, &mut chat_ids, &message).await;
             }
-            event = recv_or_pending(&mut system_monitor_rx, "telegram: system monitor") => {
-                let message = super::utils::format_system_monitor_event(&event);
+            event = recv_or_pending(&mut system_resources_rx, "telegram: system resources") => {
+                let message = super::utils::format_system_resources_event(&event);
                 if let Some(msg) = message {
                     broadcast_message(&bot, &mut chat_ids, &msg).await;
                 }
@@ -119,7 +119,7 @@ fn main_keyboard() -> KeyboardMarkup {
         ],
         vec![
             KeyboardButton::new("🖼️ Screenshot"),
-            KeyboardButton::new("🖥️ System Monitor"),
+            KeyboardButton::new("🖥️ System Resources"),
         ],
         vec![
             KeyboardButton::new("📋 Help"),
@@ -146,7 +146,7 @@ fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
         .branch(dptree::case![Command::Menu].endpoint(handle_start))
         .branch(dptree::case![Command::Help].endpoint(handle_help))
         .branch(dptree::case![Command::Screenshot].endpoint(handle_screenshot))
-        .branch(dptree::case![Command::SystemSnapshot].endpoint(handle_system_monitor))
+        .branch(dptree::case![Command::SystemSnapshot].endpoint(handle_system_resources))
         .branch(dptree::case![Command::Process].endpoint(handle_process))
         .branch(dptree::case![Command::TopProcesses].endpoint(handle_top_processes_menu))
         .branch(dptree::case![Command::StopKnightWatch].endpoint(handle_stop));
@@ -250,26 +250,8 @@ async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_system_monitor(bot: Bot, msg: Message) -> Result<()> {
-    for root_pid in process_tracker::get_root_pids().await {
-        let (root, children, work_done) = tokio::join!(
-            process_tracker::get_root(root_pid),
-            process_tracker::get_children(root_pid),
-            process_tracker::is_work_done(root_pid),
-        );
-        let child_count = children.len();
-        let process_tree_snapshot = super::models::TelegramDisplay(&process_tracker::ProcessTree {
-            root,
-            children,
-            child_count,
-            work_done,
-            timestamp: crate::utils::now_rfc3339(),
-        });
-        bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
-            .parse_mode(ParseMode::MarkdownV2)
-            .await?;
-    }
-    let system_snapshot = system_monitor::get_snapshot().await;
+async fn handle_system_resources(bot: Bot, msg: Message) -> Result<()> {
+    let system_snapshot = system_resources::get_snapshot().await;
     let message = match system_snapshot {
         Some(snap) => TelegramDisplay(&snap).to_string(),
         None => "*No System Snapshot found*".to_string(),
@@ -334,7 +316,7 @@ async fn handle_plain_message(
     match msg.text() {
         Some("📋 Help") => handle_help(bot, msg).await?,
         Some("🖼️ Screenshot") => handle_screenshot(bot, msg).await?,
-        Some("🖥️ System Monitor") => handle_system_monitor(bot, msg).await?,
+        Some("🖥️ System Resources") => handle_system_resources(bot, msg).await?,
         Some("📊 Process") => handle_process(bot, msg).await?,
         Some("📊 Top Processes") => handle_top_processes_menu(bot, msg).await?,
         Some("🔥 By CPU") => {

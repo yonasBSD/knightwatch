@@ -1,0 +1,465 @@
+<script>
+  import { onMount } from "svelte";
+  import "./global.css";
+  import ScreensPane from "./lib/components/ScreensPane.svelte";
+  import SystemPane from "./lib/components/SystemPane.svelte";
+  import ProcessesPane from "./lib/components/ProcessesPane.svelte";
+
+  // ── State ──────────────────────────────────────────────────────────
+  let activeTab = $state("screens");
+  let status = $state("Loading…");
+  let statusError = $state(false);
+  let config = $state(null);
+  let shutdownDisabled = $state(false);
+  let shutdownLabel = $state("Shutdown");
+
+  // Tab visibility driven by config
+  let showScreens = $derived(!config || !config.blind);
+  let showSystem = $derived(!config || config.system_monitor !== false);
+  let showProcesses = $derived(
+    !config ||
+      config.top_processes !== false ||
+      (config.pid && config.pid.length > 0),
+  );
+
+  // Tab indicator refs
+  let tabnavEl = $state(null);
+  let tabEls = $state({});
+  let indicatorStyle = $state("width:0;transform:translateX(0)");
+
+  const TAB_NAMES = ["screens", "system", "processes"];
+
+  // ── Tab indicator ─────────────────────────────────────────────────
+  function moveIndicator(name) {
+    const btn = tabEls[name];
+    if (!btn || !tabnavEl) return;
+    const navRect = tabnavEl.getBoundingClientRect();
+    const r = btn.getBoundingClientRect();
+    indicatorStyle = `width:${r.width}px;transform:translateX(${r.left - navRect.left - 4}px)`;
+  }
+
+  function activateTab(name, { focus = false } = {}) {
+    activeTab = name;
+    try {
+      history.replaceState(null, "", "#" + name);
+    } catch {}
+    // rAF so the DOM has settled before measuring
+    requestAnimationFrame(() => {
+      moveIndicator(name);
+      if (focus) tabEls[name]?.focus();
+    });
+  }
+
+  // ── Config load ───────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const r = await fetch("/api/config");
+      if (!r.ok) throw new Error("config fetch failed");
+      config = await r.json();
+    } catch {
+      config = {
+        blind: false,
+        pid: [],
+        top_processes: false,
+        limit_processes: 5,
+        telegram_bot: false,
+        system_monitor: false,
+      };
+    }
+
+    // Navigate away from blind tab
+    if (config.blind && activeTab === "screens") {
+      activateTab("system");
+    }
+
+    // Ensure active tab is visible
+    requestAnimationFrame(() => {
+      const visibleTabs = TAB_NAMES.filter((t) => {
+        if (t === "screens" && config.blind) return false;
+        if (t === "system" && !config.system_monitor) return false;
+        return true;
+      });
+      if (!visibleTabs.includes(activeTab)) {
+        activateTab(visibleTabs[0] ?? "processes");
+      } else {
+        moveIndicator(activeTab);
+      }
+    });
+  }
+
+  // ── Shutdown ──────────────────────────────────────────────────────
+  async function handleShutdown() {
+    if (!confirm("Shut down the server?")) return;
+    shutdownDisabled = true;
+    shutdownLabel = "Shutting down…";
+    try {
+      await fetch("/api/shutdown", { method: "POST" });
+    } catch {}
+    status = "● OFFLINE · Server shut down";
+    statusError = true;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────
+  onMount(() => {
+    // Initial tab from hash
+    const fromHash = (location.hash || "").replace("#", "");
+    const initial = TAB_NAMES.includes(fromHash) ? fromHash : "screens";
+    requestAnimationFrame(() => activateTab(initial));
+
+    loadConfig();
+
+    const onResize = () => moveIndicator(activeTab);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  });
+</script>
+
+<header id="topbar">
+  <div class="topbar-brand">
+    <span class="brand-dot"></span>
+    <h1>Knight Watch</h1>
+    <span id="status" class:error={statusError}>{status}</span>
+  </div>
+
+  <div id="tabnav" role="tablist" aria-label="Sections" bind:this={tabnavEl}>
+    {#if showScreens}
+      <button
+        class="tab"
+        role="tab"
+        aria-selected={activeTab === "screens"}
+        onclick={() => activateTab("screens")}
+        bind:this={tabEls["screens"]}
+      >
+        <span class="tab-icon" aria-hidden="true">▦</span>
+        <span class="tab-label">Screenshots</span>
+      </button>
+    {/if}
+
+    {#if showSystem}
+      <button
+        class="tab"
+        role="tab"
+        aria-selected={activeTab === "system"}
+        onclick={() => activateTab("system")}
+        bind:this={tabEls["system"]}
+      >
+        <span class="tab-icon" aria-hidden="true">◉</span>
+        <span class="tab-label">System</span>
+      </button>
+    {/if}
+
+    {#if showProcesses}
+      <button
+        class="tab"
+        role="tab"
+        aria-selected={activeTab === "processes"}
+        onclick={() => activateTab("processes")}
+        bind:this={tabEls["processes"]}
+      >
+        <span class="tab-icon" aria-hidden="true">≡</span>
+        <span class="tab-label">Processes</span>
+      </button>
+    {/if}
+
+    <span class="tab-indicator" aria-hidden="true" style={indicatorStyle}
+    ></span>
+  </div>
+
+  <div class="topbar-actions">
+    {#if config}
+      <span
+        class="telegram-indicator"
+        class:tg-on={config.telegram_bot}
+        class:tg-off={!config.telegram_bot}
+        title={config.telegram_bot
+          ? "Telegram bot is running"
+          : "Telegram bot is not running"}
+      >
+        TG Bot
+      </span>
+    {/if}
+    <button
+      id="shutdown-btn"
+      title="Shut down the server"
+      disabled={shutdownDisabled}
+      onclick={handleShutdown}
+    >
+      <span class="sd-dot"></span>
+      {shutdownLabel}
+    </button>
+  </div>
+</header>
+
+<div id="panes">
+  {#if config}
+    <section
+      class="pane"
+      class:active={activeTab === "screens"}
+      role="tabpanel"
+    >
+      <ScreensPane
+        active={activeTab === "screens"}
+        bind:status
+        bind:statusError
+        enabled={!config.blind}
+      />
+    </section>
+
+    <section class="pane" class:active={activeTab === "system"} role="tabpanel">
+      <SystemPane
+        active={activeTab === "system"}
+        enabled={config.system_monitor}
+      />
+    </section>
+
+    <section
+      class="pane"
+      class:active={activeTab === "processes"}
+      role="tabpanel"
+    >
+      <ProcessesPane
+        active={activeTab === "processes"}
+        hasPids={config.pid && config.pid.length > 0}
+        hasTopProcesses={config.top_processes}
+        limitProcesses={config.limit_processes ?? 50}
+      />
+    </section>
+  {/if}
+</div>
+
+<style>
+  /* ── Top bar ───────────────────────────────────────────── */
+  #topbar {
+    height: var(--topbar-h);
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.25rem;
+    background: rgba(18, 18, 20, 0.85);
+    backdrop-filter: saturate(160%) blur(10px);
+    -webkit-backdrop-filter: saturate(160%) blur(10px);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 50;
+  }
+
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+  }
+  .brand-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    flex-shrink: 0;
+  }
+  .topbar-brand h1 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  #status {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
+    padding-left: 0.65rem;
+    border-left: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status.error {
+    color: var(--error);
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+  }
+
+  .telegram-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+  }
+  .telegram-indicator::before {
+    content: "✈";
+    font-style: normal;
+  }
+  .telegram-indicator.tg-on {
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+  .telegram-indicator.tg-off {
+    color: var(--text-muted);
+  }
+
+  #shutdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: transparent;
+    border: 1px solid var(--error);
+    color: var(--error);
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.45rem 0.8rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      transform 0.1s ease;
+  }
+  #shutdown-btn :global(.sd-dot) {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--error);
+    box-shadow: 0 0 8px var(--error);
+  }
+  #shutdown-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.12);
+  }
+  #shutdown-btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  #shutdown-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ── Tab nav ──────────────────────────────────────────── */
+  #tabnav {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    justify-self: center;
+  }
+  :global(.tab) {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    white-space: nowrap;
+  }
+  :global(.tab .tab-icon) {
+    font-size: 0.85rem;
+    opacity: 0.85;
+  }
+  :global(.tab:hover) {
+    color: var(--text-base);
+  }
+  :global(.tab[aria-selected="true"]) {
+    color: #fff;
+  }
+  .tab-indicator {
+    position: absolute;
+    z-index: 1;
+    top: 4px;
+    bottom: 4px;
+    left: 0;
+    width: 0;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+    transition:
+      transform 0.28s cubic-bezier(0.5, 0.05, 0.2, 1),
+      width 0.28s cubic-bezier(0.5, 0.05, 0.2, 1);
+  }
+
+  /* ── Pane container ───────────────────────────────────── */
+  #panes {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .pane {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: paneIn 0.25s ease both;
+  }
+  .pane.active {
+    display: flex;
+  }
+  @keyframes paneIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ── Responsive ───────────────────────────────────────── */
+  @media (max-width: 720px) {
+    #topbar {
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      height: auto;
+      padding: 0.6rem 0.85rem;
+      gap: 0.5rem;
+    }
+    #tabnav {
+      grid-column: 1 / -1;
+      justify-self: stretch;
+      overflow-x: auto;
+    }
+    :global(.tab-label) {
+      display: none;
+    }
+    :global(.tab) {
+      padding: 0.5rem 0.75rem;
+    }
+    #status {
+      display: none;
+    }
+  }
+</style>

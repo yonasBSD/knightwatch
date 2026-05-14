@@ -22,7 +22,7 @@ async fn main() -> Result<(), errors::Error> {
     process_tracker::init_process_tracker();
     system_monitor::init_system_monitor();
     let cancel_token = tokio_util::sync::CancellationToken::new();
-    api::init_api_server(cancel_token.clone())?;
+    let vite = api::init_api_server(cancel_token.clone())?;
     webhook::init_webhook_dispatcher(cancel_token.clone());
     let telegram_bot = telegram_bot::init_bot(cancel_token.clone());
     tokio::select! {
@@ -33,6 +33,9 @@ async fn main() -> Result<(), errors::Error> {
         }
     }
     tracing::warn!("Shutting down...");
+    if let Some(vite) = vite {
+        vite.stop();
+    }
     if let Some(bot) = telegram_bot {
         bot.shutdown().await;
     }

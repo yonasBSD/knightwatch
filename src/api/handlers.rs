@@ -8,7 +8,7 @@ use axum::{
 use std::{sync::OnceLock, time::Instant};
 use tokio_util::sync::CancellationToken;
 
-use super::end_points::*;
+use super::{end_points::*, models::Vite};
 use crate::prelude::*;
 
 pub static START_TIME: OnceLock<Instant> = OnceLock::new();
@@ -46,26 +46,24 @@ fn create_api_router(cancel_token: CancellationToken) -> Router {
 
 #[cfg(debug_assertions)]
 async fn serve_dashboard(uri: axum::http::Uri) -> Response {
-    let path = uri.path().trim_start_matches('/');
-    let is_spa_route = path == "dashboard" || path == "index.html" || path.is_empty();
-    let asset_path = if is_spa_route { "index.html" } else { path };
-    let file_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("dashboard/src")
-        .join(asset_path);
-    match tokio::fs::read(&file_path).await {
-        Ok(bytes) => {
-            let mime = mime_guess::from_path(asset_path)
-                .first_or_octet_stream()
-                .to_string();
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(reqwest::header::CONTENT_TYPE, mime)
-                .body(Body::from(bytes))
-                .unwrap()
+    let vite_url = match uri.query() {
+        Some(q) => format!("http://localhost:5173{}?{}", uri.path(), q),
+        None => format!("http://localhost:5173{}", uri.path()),
+    };
+    match reqwest::Client::new().get(&vite_url).send().await {
+        Ok(res) => {
+            let status = res.status();
+            let headers = res.headers().clone();
+            let bytes = res.bytes().await.unwrap_or_default();
+            let mut builder = Response::builder().status(status);
+            if let Some(ct) = headers.get(reqwest::header::CONTENT_TYPE) {
+                builder = builder.header(reqwest::header::CONTENT_TYPE, ct);
+            }
+            builder.body(Body::from(bytes)).unwrap()
         }
         Err(_) => Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Body::from("404 Not Found"))
+            .status(StatusCode::BAD_GATEWAY)
+            .body(Body::from("Vite dev server not running on :5173"))
             .unwrap(),
     }
 }
@@ -100,16 +98,22 @@ async fn serve_dashboard(uri: axum::http::Uri) -> Response {
     }
 }
 
-pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
+pub fn init_api_server(cancel_token: CancellationToken) -> Result<Option<Vite>> {
     let config = get_config();
     if config.args.no_api {
-        return Ok(());
+        return Ok(None);
     }
     init_start_time();
     let api_listener = crate::utils::get_listener(&config.server_address())?;
     let mut app = Router::new();
     app = app.nest("/api", create_api_router(cancel_token.clone()));
+    #[allow(unused_mut)]
+    let mut vite = None;
     if !config.args.no_dashboard {
+        #[cfg(debug_assertions)]
+        {
+            vite = crate::utils::start_dev_server().map(|child_process| Vite { child_process });
+        }
         app = app.fallback(serve_dashboard);
     }
     tokio::spawn(async move {
@@ -129,5 +133,5 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<()> {
     if !config.args.no_dashboard {
         info!("Dashboard available at /");
     }
-    Ok(())
+    Ok(vite)
 }

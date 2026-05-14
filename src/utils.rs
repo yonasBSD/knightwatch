@@ -2,6 +2,23 @@ use tokio::{net::TcpListener, sync::broadcast};
 
 use crate::prelude::*;
 
+#[cfg(debug_assertions)]
+pub fn start_dev_server() -> Option<std::process::Child> {
+    if std::net::TcpStream::connect("localhost:5173").is_ok() {
+        return None;
+    }
+    info!("Starting vite server...");
+    let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
+    let child = std::process::Command::new(npm)
+        .args(["run", "dev"])
+        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/dashboard"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to start vite dev server");
+    Some(child)
+}
+
 pub fn get_listener(address: &str) -> Result<TcpListener> {
     let std_listener =
         std::net::TcpListener::bind(address).map_err(|err| Error::bind_address(address, err))?;

@@ -5,7 +5,7 @@ use crate::prelude::*;
 
 pub fn init_webhook_dispatcher(cancel_token: tokio_util::sync::CancellationToken) {
     let config = get_config();
-    if !config.args.with_webhook || config.args.webhook_urls.is_empty() {
+    if !config.args.with_webhook && config.args.webhook_urls.is_empty() {
         return;
     }
     let mut urls = config.persistent.webhook_urls.clone();

@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod errors;
+mod macros;
 mod prelude;
 mod process_tracker;
 mod screen_capture;

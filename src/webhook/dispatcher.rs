@@ -8,7 +8,7 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
     let mut process_tracker_rx = crate::process_tracker::subscribe_events();
     let mut system_resources_rx = crate::system_resources::subscribe_events();
     let mut systemd_rx = crate::systemd::subscribe_events();
-    if process_tracker_rx.is_none() && system_resources_rx.is_none() && systemd_rx.is_none() {
+    if crate::all_none!(process_tracker_rx, system_resources_rx, systemd_rx) {
         return;
     }
     let client = Client::new();

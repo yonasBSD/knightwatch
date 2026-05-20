@@ -18,6 +18,7 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 - **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
 - **Linux Extended Telemetry** — On Linux, child process snapshots include working directory, command line, open file descriptors, and I/O stats
 - **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
+- **Systemd Monitor** — Live systemd unit tracking with active/failed/inactive counts, per-unit state, resource usage, and change events (Linux only)
 - **Telegram Bot** — Optional bot for remote monitoring and push notifications on process and system events
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 - **Structured Logging** — Tracing via `tracing-subscriber` with configurable log levels via `RUST_LOG`
@@ -49,6 +50,10 @@ The Rust backend exposes a small HTTP API (served by Axum) that the frontend pol
 | `GET /battery` | GET | Returns the battery snapshot, or 404 if no battery present |
 | `GET /host-info` | GET | Returns static host information (hostname, OS, kernel, arch, uptime) |
 | `GET /temperatures` | GET | Returns thermal sensor readings |
+| `GET /systemd` | GET | Returns the full systemd snapshot (units, counts) — Linux only |
+| `GET /unit/<unit_name>` | GET | Returns a snapshot for a specific unit by name, or 404 if not found |
+| `GET /units/<unit_state>` | GET | Returns all units matching the given active state |
+| `GET /failed_units` | GET | Returns all units currently in a failed state |
 | `POST /shutdown` | POST | Gracefully shuts down the server |
 
 ### Expected Response Shapes
@@ -229,6 +234,49 @@ Process `state` can be `running`, `sleeping`, `gone`, or any other string (rende
 
 - **Note: on windows, temepatures api requires you to run the app as administrator**
 
+**`/systemd`**
+
+> **Linux only.** Returns `404` on non-Linux platforms.
+
+```json
+{
+  "timestamp": "2025-01-01T00:00:00Z",
+  "units": [
+    {
+      "unit_name": "nginx.service",
+      "unit_type": "service",
+      "load_state": "loaded",
+      "active_state": "active",
+      "sub_state": "running",
+      "description": "A high performance web server and a reverse proxy server",
+      "main_pid": 1234,
+      "memory_bytes": 10485760,
+      "cpu_usage_ns": 500000000,
+      "restart_count": 0,
+      "since": "2025-01-01T00:00:00Z",
+      "fragment_path": "/lib/systemd/system/nginx.service"
+    }
+  ],
+  "failed_count": 0,
+  "active_count": 42,
+  "inactive_count": 10
+}
+```
+
+**`/unit/<unit_name>`**
+
+Returns a single `UnitSnapshot` object (same shape as array elements above), or `404` if the unit is not found.
+
+**`/units/<unit_state>`**
+
+Returns an array of `UnitSnapshot` objects matching the given `active_state`. Valid states: `active`, `reloading`, `inactive`, `failed`, `activating`, `deactivating`.
+
+**`/failed_units`**
+
+Returns an array of `UnitSnapshot` objects whose `active_state` is `failed`.
+
+`unit_type` can be `service`, `socket`, `target`, `timer`, `mount`, `device`, or `other`. `load_state` can be `loaded`, `not_found`, `bad_setting`, `error`, or `masked`.
+
 ---
 
 ## Getting Started
@@ -252,6 +300,7 @@ Pass the PID of the root process you want to monitor. The server will start on `
 | `--no-dashboard` | `false` | Disable the web dashboard |
 | `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
 | `--system-resources` | `false` | Enable the system resources (CPU, memory, disks, network, battery, thermals) |
+| `--systemd` | `false` | Enable the systemd monitor (Linux only; shows a warning on other platforms) |
 | `--telegram` | `false` | Enable the Telegram bot |
 | `--with-webhook` | `false` | Enable webhook dispatching |
 | `--webhook <URL>` | — | Webhook URL to POST process events to (repeatable) |
@@ -280,6 +329,12 @@ To enable the system resources:
 
 ```bash
 knightwatch --pid <PID> --system-resources
+```
+
+To enable the systemd monitor (Linux only):
+
+```bash
+knightwatch --pid <PID> --systemd
 ```
 
 To enable webhook dispatching with one or more targets:
@@ -316,6 +371,49 @@ When enabled with `--system-resources`, Knightwatch polls hardware metrics every
 | Memory usage | ≥ 90% |
 | Disk usage (per mount) | ≥ 90% |
 | Battery charge | ≤ 15% (discharging only) |
+
+## Systemd Monitor
+
+> **Linux only.** On any other OS, passing `--systemd` prints a warning and the flag is ignored.
+
+When enabled with `--systemd`, Knightwatch polls systemd over D-Bus every second and exposes unit state via the `/systemd` family of endpoints. It also emits unit change events to the Telegram bot and webhook dispatcher.
+
+```bash
+knightwatch --pid <PID> --systemd
+```
+
+### Endpoints
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /systemd` | Full snapshot — all units with counts |
+| `GET /unit/<unit_name>` | Single unit by name (e.g. `nginx.service`), or 404 |
+| `GET /units/<unit_state>` | All units matching an active state (`active`, `failed`, etc.) |
+| `GET /failed_units` | Shorthand for all units in the `failed` state |
+
+### Webhook Events
+
+When webhooks are also enabled, systemd emits the following events:
+
+| Event | Description | Key `data` fields |
+| --- | --- | --- |
+| `systemd.initial_snapshot` | First unit snapshot after startup | `timestamp`, `unit_count`, `failed_count`, `active_count`, `inactive_count` |
+| `systemd.tick` | Periodic unit snapshot | `timestamp`, `unit_count`, `failed_count`, `active_count`, `inactive_count` |
+| `systemd.unit_failed` | A unit transitioned to `failed` | `unit_name`, `previous_state` |
+| `systemd.unit_recovered` | A previously failed unit recovered | `unit_name` |
+| `systemd.unit_appeared` | A new unit became visible | `unit_name`, `active_state`, `sub_state`, `description` |
+| `systemd.unit_disappeared` | A unit is no longer present | `unit_name` |
+
+### Telegram Notifications
+
+When both `--systemd` and `--telegram` are enabled, the bot sends alerts for:
+
+- 🔴 **Unit failed** — a unit transitioned to `failed`
+- 🟢 **Unit recovered** — a previously failed unit is active again
+- 🆕 **Unit appeared** — a new unit became visible to systemd
+- 💨 **Unit disappeared** — a tracked unit is no longer present
+
+---
 
 ## Telegram Bot
 

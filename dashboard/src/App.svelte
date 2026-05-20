@@ -4,6 +4,7 @@
   import ScreensPane from "./lib/components/ScreensPane.svelte";
   import SystemResourcesPane from "./lib/components/SystemResourcesPane.svelte";
   import ProcessesPane from "./lib/components/ProcessesPane.svelte";
+  import SystemdPane from "./lib/components/SystemdPane.svelte";
 
   // ── State ──────────────────────────────────────────────────────────
   let activeTab = $state("screens");
@@ -19,15 +20,16 @@
   let showProcesses = $derived(
     !config ||
       config.top_processes !== false ||
-      (config.pid && config.pid.length > 0),
+      (config.pid && config.pid.length > 0)
   );
+  let showSystemd = $derived(!config || config.systemd !== false);
 
   // Tab indicator refs
   let tabnavEl = $state(null);
   let tabEls = $state({});
   let indicatorStyle = $state("width:0;transform:translateX(0)");
 
-  const TAB_NAMES = ["screens", "system", "processes"];
+  const TAB_NAMES = ["screens", "system", "processes", "systemd"];
 
   // ── Tab indicator ─────────────────────────────────────────────────
   function moveIndicator(name) {
@@ -64,6 +66,7 @@
         limit_processes: 5,
         telegram_bot: false,
         system_resources: false,
+        systemd: false,
       };
     }
 
@@ -77,6 +80,7 @@
       const visibleTabs = TAB_NAMES.filter((t) => {
         if (t === "screens" && config.blind) return false;
         if (t === "system" && !config.system_resources) return false;
+        if (t === "systemd" && !config.systemd) return false;
         return true;
       });
       if (!visibleTabs.includes(activeTab)) {
@@ -161,6 +165,19 @@
       </button>
     {/if}
 
+    {#if showSystemd}
+      <button
+        class="tab"
+        role="tab"
+        aria-selected={activeTab === "systemd"}
+        onclick={() => activateTab("systemd")}
+        bind:this={tabEls["systemd"]}
+      >
+        <span class="tab-icon" aria-hidden="true">≡</span>
+        <span class="tab-label">Systemd</span>
+      </button>
+    {/if}
+
     <span class="tab-indicator" aria-hidden="true" style={indicatorStyle}
     ></span>
   </div>
@@ -223,6 +240,14 @@
         hasTopProcesses={config.top_processes}
         limitProcesses={config.limit_processes ?? 50}
       />
+    </section>
+
+    <section
+      class="pane"
+      class:active={activeTab === "systemd"}
+      role="tabpanel"
+    >
+      <SystemdPane active={activeTab === "systemd"} enabled={config.systemd} />
     </section>
   {/if}
 </div>

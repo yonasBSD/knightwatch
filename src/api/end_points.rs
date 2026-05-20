@@ -8,7 +8,7 @@ use base64::{Engine as _, engine::general_purpose};
 use super::models::*;
 use crate::{
     process_tracker::{self, ProcessSnapshot, ProcessStatus, ProcessTree},
-    system_resources,
+    system_resources, systemd,
     utils::now_rfc3339,
 };
 
@@ -41,6 +41,7 @@ pub async fn config() -> Json<ConfigResponse> {
         limit_processes: args.limit_processes,
         telegram_bot: args.telegram,
         system_resources: args.system_resources,
+        systemd: args.systemd,
     })
 }
 
@@ -296,4 +297,59 @@ pub async fn host_info_snapshot()
 /// Returns the Temperatures Snapshots.
 pub async fn temperatures_snapshots() -> Json<Vec<system_resources::ThermalSnapshot>> {
     Json(system_resources::get_temperatures().await)
+}
+
+// ---------------------------------------------------------------------------
+// Systemd endpoints
+// ---------------------------------------------------------------------------
+
+/// `GET /systemd`
+///
+/// Returns the current Systemd Snapshot.
+pub async fn systemd_snapshot()
+-> Result<Json<systemd::SystemdSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match systemd::get_snapshot().await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No Systemd Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /unit/{unit_name}`
+///
+/// Returns Unit Snapshot by name.
+pub async fn unit_snapshot(
+    Path(unit_name): Path<String>,
+) -> Result<Json<systemd::UnitSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    match systemd::get_unit(unit_name).await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                success: false,
+                message: "No Unit Snapshot was found".to_string(),
+            }),
+        )),
+    }
+}
+
+/// `GET /units/{unit_state}`
+///
+/// Returns units by active state.
+pub async fn units_by_active_state(
+    Path(unit_state): Path<String>,
+) -> Json<Vec<systemd::UnitSnapshot>> {
+    Json(systemd::get_units_by_active_state(unit_state.as_str().into()).await)
+}
+
+/// `GET /failed_units`
+///
+/// Returns failedunits.
+pub async fn failed_units() -> Json<Vec<systemd::UnitSnapshot>> {
+    Json(systemd::get_failed_units().await)
 }

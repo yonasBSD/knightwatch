@@ -1,5 +1,8 @@
 use super::utils::{escape_mdv2, health_emoji};
-use crate::utils::{format_bytes, format_uptime};
+use crate::{
+    systemd::UnitActiveState,
+    utils::{format_bytes, format_uptime},
+};
 
 #[derive(teloxide::utils::command::BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "Available commands:")]
@@ -20,6 +23,12 @@ pub enum Command {
     SystemSnapshot,
     #[command(description = "Stop Knight Watch")]
     StopKnightWatch,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChatState {
+    Idle,
+    AwaitingUnitName,
 }
 
 pub struct TelegramBot {
@@ -306,6 +315,92 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_resources::Syst
             emoji = health_emoji(&s.health),
             health = s.health,
         )?;
+
+        Ok(())
+    }
+}
+
+fn unit_state_emoji(state: &UnitActiveState) -> &'static str {
+    match state {
+        UnitActiveState::Active => "🟢",
+        UnitActiveState::Reloading => "🔄",
+        UnitActiveState::Inactive => "⚫",
+        UnitActiveState::Failed => "🔴",
+        UnitActiveState::Activating => "🟡",
+        UnitActiveState::Deactivating => "🟠",
+    }
+}
+
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::systemd::UnitSnapshot> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let u = self.0;
+        let emoji = unit_state_emoji(&u.active_state);
+
+        writeln!(
+            f,
+            "{emoji} *{name}*  `{sub}`",
+            name = escape_mdv2(&u.unit_name),
+            sub = escape_mdv2(&u.sub_state),
+        )?;
+        if !u.description.is_empty() && u.description != u.unit_name {
+            writeln!(f, "   ├ `{}`", escape_mdv2(&u.description))?;
+        }
+        if let Some(pid) = u.main_pid {
+            writeln!(f, "   ├ PID: `{pid}`")?;
+        }
+        if let Some(mem) = u.memory_bytes {
+            writeln!(f, "   ├ Mem: `{}`", escape_mdv2(&format_bytes(mem)))?;
+        }
+        if let Some(cpu_ns) = u.cpu_usage_ns {
+            let cpu_secs = cpu_ns as f64 / 1_000_000_000.0;
+            writeln!(f, "   ├ CPU time: `{cpu_secs:.2}s`")?;
+        }
+        if let Some(restarts) = u.restart_count {
+            writeln!(f, "   ├ Restarts: `{restarts}`")?;
+        }
+        if let Some(since) = &u.since {
+            writeln!(f, "   ├ Since: `{}`", escape_mdv2(since))?;
+        }
+        if let Some(path) = &u.fragment_path {
+            write!(f, "   └ File: `{}`", escape_mdv2(path))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::systemd::SystemdSnapshot> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = self.0;
+
+        writeln!(f, "🔧 *Systemd* — `{ts}`", ts = escape_mdv2(&s.timestamp),)?;
+        writeln!(
+            f,
+            "├ 🟢 Active: `{active}`\n\
+             ├ ⚫ Inactive: `{inactive}`\n\
+             └ 🔴 Failed: `{failed}`",
+            active = s.active_count,
+            inactive = s.inactive_count,
+            failed = s.failed_count,
+        )?;
+        if s.failed_count > 0 {
+            let failed_units: Vec<_> = s
+                .units
+                .iter()
+                .filter(|u| u.active_state == UnitActiveState::Failed)
+                .collect();
+            if !failed_units.is_empty() {
+                writeln!(f, "\n🔴 *Failed Units:*")?;
+                for unit in failed_units {
+                    writeln!(
+                        f,
+                        "• `{name}` — {sub}",
+                        name = escape_mdv2(&unit.unit_name),
+                        sub = escape_mdv2(&unit.sub_state),
+                    )?;
+                }
+            }
+        }
 
         Ok(())
     }

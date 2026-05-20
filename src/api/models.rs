@@ -16,6 +16,7 @@ pub struct ConfigResponse {
     pub limit_processes: usize,
     pub telegram_bot: bool,
     pub system_resources: bool,
+    pub systemd: bool,
 }
 
 // ---------------------------------------------------------------------------

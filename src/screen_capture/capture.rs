@@ -54,13 +54,24 @@ impl ScreenCapture {
     }
 
     async fn handle_tick(&mut self) {
-        match Self::screenshot_monitors() {
+        match Self::screenshot_monitors().await {
             Ok(captures) => self.last_captures = captures,
             Err(err) => error!("Failed to capture screenshots: {err}"),
         };
     }
 
-    fn screenshot_monitors() -> Result<Vec<Screenshot>> {
+    // Runs xcap (which calls zbus::blocking internally) on a dedicated
+    // OS thread via spawn_blocking, so it never conflicts with the
+    // Tokio runtime that owns the current thread.
+    async fn screenshot_monitors() -> Result<Vec<Screenshot>> {
+        tokio::task::spawn_blocking(|| {
+            Self::screenshot_monitors_blocking()
+        })
+        .await
+        .map_err(|e| Error::Screen(format!("spawn_blocking join error: {e}")))?
+    }
+
+    fn screenshot_monitors_blocking() -> Result<Vec<Screenshot>> {
         Self::get_monitors()?
             .into_iter()
             .map(|screen| Self::take_screenshot(&screen))

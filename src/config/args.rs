@@ -57,6 +57,10 @@ pub struct CliArgs {
     /// Enable system resources
     #[arg(long, default_value_t = false)]
     pub system_resources: bool,
+
+    /// Enable systemd
+    #[arg(long, default_value_t = false)]
+    pub systemd: bool,
 }
 
 #[derive(Subcommand, Debug)]

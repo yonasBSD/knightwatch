@@ -2,6 +2,7 @@ use super::models::TelegramDisplay;
 use crate::{
     process_tracker::ProcessTrackerEvent,
     system_resources::{BatteryState, SystemHealth, SystemResourcesEvent},
+    systemd::SystemdEvent,
 };
 
 const SPECIAL: &[char] = &[
@@ -110,6 +111,41 @@ pub fn format_system_resources_event(event: &SystemResourcesEvent) -> Option<Str
                 "{emoji} *Battery State Changed*\n└ State: `{label}`"
             ))
         }
+    }
+}
+
+pub fn format_systemd_event(event: &SystemdEvent) -> Option<String> {
+    match event {
+        SystemdEvent::Tick { .. } => None,
+        SystemdEvent::InitialSnapshot { snapshot } => {
+            let display = TelegramDisplay(snapshot);
+            Some(format!("🟢 *Systemd Started*\n\n{display}"))
+        }
+        SystemdEvent::UnitFailed {
+            unit_name,
+            previous_state,
+        } => {
+            let prev = previous_state.as_str();
+            Some(format!(
+                "🔴 *Unit Failed*\n\
+                 ├ Unit: `{unit}`\n\
+                 └ Was: `{prev}`",
+                unit = escape_mdv2(unit_name),
+            ))
+        }
+        SystemdEvent::UnitRecovered { unit_name } => Some(format!(
+            "✅ *Unit Recovered*\n\
+             └ Unit: `{unit}`",
+            unit = escape_mdv2(unit_name),
+        )),
+        SystemdEvent::UnitAppeared { unit } => {
+            Some(format!("🆕 *Unit Appeared*\n{}", TelegramDisplay(unit),))
+        }
+        SystemdEvent::UnitDisappeared { unit_name } => Some(format!(
+            "👻 *Unit Disappeared*\n\
+             └ Unit: `{unit}`",
+            unit = escape_mdv2(unit_name),
+        )),
     }
 }
 

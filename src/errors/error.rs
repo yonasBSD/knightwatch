@@ -8,6 +8,7 @@ pub enum Error {
     Config(String),
     ProcessTracker(String),
     SystemResources(String),
+    Systemd(String),
     Other(String),
     TelegramBot(String),
 }
@@ -27,6 +28,7 @@ impl std::fmt::Display for Error {
             | Error::Network(msg)
             | Error::TelegramBot(msg)
             | Error::SystemResources(msg)
+            | Error::Systemd(msg)
             | Error::ProcessTracker(msg) => {
                 write!(f, "{msg}")
             }

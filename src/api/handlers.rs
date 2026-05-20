@@ -41,6 +41,11 @@ fn create_api_router(cancel_token: CancellationToken) -> Router {
         .route("/battery", get(battery_snapshot)) // battery snapshot
         .route("/host-info", get(host_info_snapshot)) // host info snapshot
         .route("/temperatures", get(temperatures_snapshots)) // temperatures snapshot
+        // ── System Resources ──────────────────────────────────────────────
+        .route("/systemd", get(systemd_snapshot)) // systemd snapshot
+        .route("/unit/{unit_name}", get(unit_snapshot)) // unit snapshot
+        .route("/units/{unit_state}", get(units_by_active_state)) // units by active state
+        .route("/failed_units", get(failed_units)) // failed_units
         .with_state(cancel_token)
 }
 

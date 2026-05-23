@@ -1,11 +1,11 @@
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-pub fn init_tracing() -> Result<(), crate::errors::Error> {
-    let env_filter: EnvFilter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info,zbus=off"))
-        .map_err(|e: tracing_subscriber::filter::ParseError| {
-            crate::errors::Error::Other(format!("Failed to initialize env filter: {}", e))
-        })?;
+use crate::prelude::*;
+
+pub fn init_tracing() -> Result<()> {
+    let env_filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .map_err(|e| Error::Other(format!("Failed to initialize env filter: {}", e)))?;
     tracing_subscriber::registry()
         .with(env_filter)
         .with(

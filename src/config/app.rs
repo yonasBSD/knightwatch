@@ -2,8 +2,10 @@ use clap::Parser;
 use std::sync::OnceLock;
 
 use super::{
-    args::{CliArgs, Command, ConfigAction, ConfigField},
+    args::{CliArgs, Command, ConfigAction, ConfigField, UsersAction},
     persistent::PersistentConfig,
+    store::JsonStore,
+    users::Users,
 };
 use crate::prelude::*;
 
@@ -35,11 +37,18 @@ pub fn init_config() -> Result<&'static AppConfig> {
     Ok(get_config())
 }
 
-pub fn handle_config_command(command: &Command) -> Result<()> {
-    let config = get_config();
+pub fn handle_command(command: &Command) -> Result<()> {
     match command {
-        Command::Config { action } => match action {
-            ConfigAction::Get { field } => match field {
+        Command::Config { action } => handle_config_action(action),
+        Command::Users { action } => handle_users_action(action),
+    }
+}
+
+fn handle_config_action(action: &ConfigAction) -> Result<()> {
+    match action {
+        ConfigAction::Get { field } => {
+            let config = get_config();
+            match field {
                 ConfigField::TelegramToken { .. } => match &config.persistent.telegram_token {
                     Some(t) => info!("telegram_token = {t}"),
                     None => info!("telegram_token is not set"),
@@ -53,51 +62,112 @@ pub fn handle_config_command(command: &Command) -> Result<()> {
                         }
                     }
                 }
-            },
-            ConfigAction::Set { field } => {
-                let mut persistent = PersistentConfig::load()?;
-                match field {
-                    ConfigField::TelegramToken { value, clear } => {
-                        if *clear {
-                            persistent.telegram_token = None;
-                            persistent.save()?;
-                            info!("telegram_token cleared.");
-                        } else if value.is_some() {
-                            persistent.telegram_token = value.clone();
-                            persistent.save()?;
-                            info!("telegram_token updated.");
-                        } else {
-                            info!("No action: provide a value or --clear.");
-                        }
-                    }
-                    ConfigField::WebhookUrls { add, remove, clear } => {
-                        let mut persistent = PersistentConfig::load()?;
-                        if *clear {
-                            persistent.webhook_urls.clear();
-                            info!("webhook_urls cleared.");
-                        } else {
-                            for url in remove {
-                                if persistent.webhook_urls.contains(url) {
-                                    persistent.webhook_urls.retain(|u| u != url);
-                                    info!("webhook_url removed: {url}");
-                                } else {
-                                    info!("webhook_url not found: {url}");
-                                }
-                            }
-                            for url in add {
-                                if !persistent.webhook_urls.contains(url) {
-                                    persistent.webhook_urls.push(url.clone());
-                                    info!("webhook_url added: {url}");
-                                } else {
-                                    info!("webhook_url already exists: {url}");
-                                }
-                            }
-                        }
+            }
+        }
+        ConfigAction::Set { field } => {
+            let mut persistent = PersistentConfig::load()?;
+            match field {
+                ConfigField::TelegramToken { value, clear } => {
+                    if *clear {
+                        persistent.telegram_token = None;
                         persistent.save()?;
+                        info!("telegram_token cleared.");
+                    } else if value.is_some() {
+                        persistent.telegram_token = value.clone();
+                        persistent.save()?;
+                        info!("telegram_token updated.");
+                    } else {
+                        info!("No action: provide a value or --clear.");
                     }
                 }
+                ConfigField::WebhookUrls { add, remove, clear } => {
+                    if *clear {
+                        persistent.webhook_urls.clear();
+                        info!("webhook_urls cleared.");
+                    } else {
+                        for url in remove {
+                            if persistent.webhook_urls.contains(url) {
+                                persistent.webhook_urls.retain(|u| u != url);
+                                info!("webhook_url removed: {url}");
+                            } else {
+                                info!("webhook_url not found: {url}");
+                            }
+                        }
+                        for url in add {
+                            if !persistent.webhook_urls.contains(url) {
+                                persistent.webhook_urls.push(url.clone());
+                                info!("webhook_url added: {url}");
+                            } else {
+                                info!("webhook_url already exists: {url}");
+                            }
+                        }
+                    }
+                    persistent.save()?;
+                }
             }
-        },
-    }
+        }
+    };
+    Ok(())
+}
+
+fn handle_users_action(action: &UsersAction) -> Result<()> {
+    match action {
+        UsersAction::Add { username } => {
+            let password = rpassword::prompt_password(format!("Password for '{username}': "))
+                .map_err(|e| Error::Config(format!("Failed to read password: {e}")))?;
+            let password_hash = super::users::hash_password(&password)?;
+            let telegram_token = super::users::generate_telegram_token();
+            let mut users = Users::load()?;
+            users.add(super::users::User {
+                username: username.clone(),
+                password_hash,
+                telegram_token: telegram_token.clone(),
+                telegram_chat_id: None,
+            })?;
+            users.save()?;
+            info!("user added: {username}");
+            info!("telegram token: {telegram_token}");
+        }
+        UsersAction::Remove { username } => {
+            let mut users = Users::load()?;
+            users.remove(username)?;
+            users.save()?;
+            info!("user removed: {username}");
+        }
+        UsersAction::List => {
+            let users = Users::load()?;
+            if users.users.is_empty() {
+                info!("no users configured");
+            } else {
+                for user in &users.users {
+                    let telegram_status = match user.telegram_chat_id {
+                        Some(_) => "linked",
+                        None => "not linked",
+                    };
+                    info!("user = {} (telegram: {telegram_status})", user.username);
+                }
+            }
+        }
+        UsersAction::Clear => {
+            let mut users = Users::load()?;
+            users.users.clear();
+            users.save()?;
+            info!("all users cleared.");
+        }
+        UsersAction::Token { username } => {
+            let users = Users::load()?;
+            match users.find(username) {
+                Some(user) => {
+                    info!("telegram token for '{username}': {}", user.telegram_token);
+                    if user.telegram_chat_id.is_some() {
+                        info!("(telegram already linked)");
+                    } else {
+                        info!("(telegram not yet linked)");
+                    }
+                }
+                None => return Err(Error::Config(format!("User '{username}' not found"))),
+            }
+        }
+    };
     Ok(())
 }

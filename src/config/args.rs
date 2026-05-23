@@ -70,6 +70,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Manage users
+    Users {
+        #[command(subcommand)]
+        action: UsersAction,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -83,6 +88,26 @@ pub enum ConfigAction {
     Get {
         #[command(subcommand)]
         field: ConfigField,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum UsersAction {
+    /// Add a new user
+    Add {
+        username: String,
+    },
+    /// Remove a user
+    Remove {
+        username: String,
+    },
+    /// List all users
+    List,
+    /// Remove all users
+    Clear,
+    /// Show the Telegram authentication token for a user
+    Token {
+        username: String,
     },
 }
 

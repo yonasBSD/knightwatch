@@ -17,8 +17,9 @@ mod webhook;
 async fn main() -> Result<(), errors::Error> {
     telemetry::init_tracing()?;
     let config = config::init_config()?;
+    config::load_users()?;
     if let Some(action) = config.args.command.as_ref() {
-        return config::handle_config_command(action);
+        return config::handle_command(action);
     }
     screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();

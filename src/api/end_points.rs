@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use axum_extra::{TypedHeader, headers};
 use base64::{Engine as _, engine::general_purpose};
 
 use super::models::*;
@@ -35,6 +36,7 @@ pub async fn health() -> Json<HealthResponse> {
 pub async fn config() -> Json<ConfigResponse> {
     let args = &crate::prelude::get_config().args;
     Json(ConfigResponse {
+        auth_enabled: args.enable_auth,
         blind: args.blind,
         pid: args.pid.clone(),
         top_processes: args.top_processes,
@@ -43,6 +45,39 @@ pub async fn config() -> Json<ConfigResponse> {
         system_resources: args.system_resources,
         systemd: args.systemd,
     })
+}
+
+pub async fn login(Json(body): Json<LoginRequest>) -> Result<Json<LoginResponse>, StatusCode> {
+    let users = crate::config::get_users();
+    if users.users.is_empty() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    match users.verify_password(&body.username, &body.password) {
+        Ok(true) => {}
+        _ => return Err(StatusCode::UNAUTHORIZED),
+    }
+    let token = uuid::Uuid::new_v4().to_string();
+    let session = super::session::Session {
+        username: body.username.clone(),
+        token: token.clone(),
+    };
+    super::session::get_sessions()
+        .write()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .insert(session);
+    Ok(Json(LoginResponse { token }))
+}
+
+pub async fn logout(
+    TypedHeader(auth): TypedHeader<headers::Authorization<headers::authorization::Bearer>>,
+) -> StatusCode {
+    match super::session::get_sessions().write() {
+        Ok(mut sessions) => {
+            sessions.remove_by_token(auth.token());
+            StatusCode::OK
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 // ---------------------------------------------------------------------------

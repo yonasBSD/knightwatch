@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import ProcessCard from "./ProcessCard.svelte";
+  import { apiFetch } from "../api.js";
 
   let { active, hasPids, hasTopProcesses, limitProcesses } = $props();
 
@@ -23,7 +24,7 @@
   async function refreshTracked() {
     if (!hasPids) return;
     try {
-      const rIds = await fetch("/api/root_pids");
+      const rIds = await apiFetch("/api/root_pids");
       if (!rIds.ok) throw new Error("HTTP error");
       const pids = await rIds.json();
 
@@ -38,7 +39,7 @@
 
       for (const pid of pids) {
         try {
-          const r = await fetch(`/api/process/${pid}`);
+          const r = await apiFetch(`/api/process/${pid}`);
           if (!r.ok) continue;
           const data = await r.json();
           allDone = allDone && data.work_done;
@@ -58,7 +59,7 @@
   async function refreshTop() {
     if (!hasTopProcesses) return;
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `/api/top-processes?sort=${topSort}&limit=${topLimit}`,
       );
       if (!r.ok) throw new Error("HTTP error");

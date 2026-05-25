@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from "svelte";
+  import { apiFetch } from "../api.js";
 
   let { active, enabled } = $props();
 
@@ -21,8 +22,8 @@
     if (!enabled) return;
     try {
       const [snapRes, failedRes] = await Promise.all([
-        fetch("/api/systemd"),
-        fetch("/api/failed_units"),
+        apiFetch("/api/systemd"),
+        apiFetch("/api/failed_units"),
       ]);
       if (snapRes.ok) snap = await snapRes.json();
       if (failedRes.ok) failedUnits = await failedRes.json();
@@ -33,7 +34,7 @@
     detailLoading = true;
     selectedUnit = null;
     try {
-      const r = await fetch(`/api/unit/${encodeURIComponent(unitName)}`);
+      const r = await apiFetch(`/api/unit/${encodeURIComponent(unitName)}`);
       if (r.ok) selectedUnit = await r.json();
     } catch {}
     detailLoading = false;

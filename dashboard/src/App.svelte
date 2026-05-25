@@ -5,6 +5,8 @@
   import SystemResourcesPane from "./lib/components/SystemResourcesPane.svelte";
   import ProcessesPane from "./lib/components/ProcessesPane.svelte";
   import SystemdPane from "./lib/components/SystemdPane.svelte";
+  import LoginPage from "./lib/components/LoginPage.svelte";
+  import { auth, apiFetch } from "./lib/api.js";
 
   // ── State ──────────────────────────────────────────────────────────
   let activeTab = $state("screens");
@@ -13,6 +15,17 @@
   let config = $state(null);
   let shutdownDisabled = $state(false);
   let shutdownLabel = $state("Shutdown");
+
+  // ── Auth ───────────────────────────────────────────────────────────
+  // Show login when auth is required and no valid token exists.
+  // Covers first load, explicit logout, and 401 expiry.
+  let needsLogin = $derived(
+    config !== null && config.auth_enabled && !$auth.token
+  );
+
+  function onLogin() {
+    loadConfig();
+  }
 
   // Tab visibility driven by config
   let showScreens = $derived(!config || !config.blind);
@@ -55,11 +68,14 @@
   // ── Config load ───────────────────────────────────────────────────
   async function loadConfig() {
     try {
-      const r = await fetch("/api/config");
+      const r = await apiFetch("/api/config");
       if (!r.ok) throw new Error("config fetch failed");
       config = await r.json();
-    } catch {
+    } catch (e) {
+      // If we were redirected to login, don't overwrite config with defaults
+      if (e?.message === "Unauthorized") return;
       config = {
+        auth_enabled: false,
         blind: false,
         pid: [],
         top_processes: false,
@@ -97,7 +113,7 @@
     shutdownDisabled = true;
     shutdownLabel = "Shutting down…";
     try {
-      await fetch("/api/shutdown", { method: "POST" });
+      await apiFetch("/api/shutdown", { method: "POST" });
     } catch {}
     status = "● OFFLINE · Server shut down";
     statusError = true;
@@ -117,6 +133,10 @@
     return () => window.removeEventListener("resize", onResize);
   });
 </script>
+
+{#if needsLogin}
+  <LoginPage onLogin={onLogin} />
+{:else}
 
 <header id="topbar">
   <div class="topbar-brand">
@@ -204,6 +224,13 @@
       <span class="sd-dot"></span>
       {shutdownLabel}
     </button>
+
+    {#if config?.auth_enabled}
+      <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
+        <span class="logout-icon" aria-hidden="true">⏻</span>
+        Sign out
+      </button>
+    {/if}
   </div>
 </header>
 
@@ -251,6 +278,8 @@
     </section>
   {/if}
 </div>
+
+{/if}
 
 <style>
   /* ── Top bar ───────────────────────────────────────────── */
@@ -461,6 +490,42 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* ── Logout button ────────────────────────────────────── */
+  #logout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.45rem 0.8rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease,
+      transform 0.1s ease;
+  }
+  #logout-btn:hover {
+    background: var(--bg-card);
+    color: var(--text-base);
+    border-color: #3f3f46;
+  }
+  #logout-btn:active {
+    transform: translateY(1px);
+  }
+  .logout-icon {
+    font-size: 0.8rem;
+    opacity: 0.75;
   }
 
   /* ── Responsive ───────────────────────────────────────── */

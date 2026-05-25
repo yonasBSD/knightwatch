@@ -10,6 +10,7 @@ pub struct HealthResponse {
 
 #[derive(Debug, Serialize)]
 pub struct ConfigResponse {
+    pub auth_enabled: bool,
     pub blind: bool,
     pub pid: Vec<u32>,
     pub top_processes: bool,
@@ -17,6 +18,17 @@ pub struct ConfigResponse {
     pub telegram_bot: bool,
     pub system_resources: bool,
     pub systemd: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
 }
 
 // ---------------------------------------------------------------------------

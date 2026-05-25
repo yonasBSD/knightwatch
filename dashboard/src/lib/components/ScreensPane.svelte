@@ -1,6 +1,6 @@
 <script>
-  import { onDestroy } from "svelte";
   import { fmtTimestamp } from "../utils/format.js";
+  import { apiFetch } from "../api.js";
 
   let {
     active,
@@ -12,12 +12,10 @@
   /** @type {Array<{monitor_id: string|number, monitor_name: string, width: number, height: number, timestamp: string, mime: string, data: string}>} */
   let screens = $state([]);
 
-  let interval = $state(null);
-
   async function refresh() {
     const start = Date.now();
     try {
-      const r = await fetch("/api/screenshot");
+      const r = await apiFetch("/api/screenshot");
       if (!r.ok) throw new Error("HTTP error");
       const data = await r.json();
       screens = data.screens;

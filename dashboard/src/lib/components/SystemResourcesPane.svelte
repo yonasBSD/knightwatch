@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { formatBytes, formatUptime } from "../utils/format.js";
+  import { apiFetch } from "../api.js";
 
   let { active, enabled } = $props();
 
@@ -10,7 +11,7 @@
   async function refresh() {
     if (!enabled) return;
     try {
-      const r = await fetch("/api/system");
+      const r = await apiFetch("/api/system");
       if (!r.ok) throw new Error("HTTP error");
       snap = await r.json();
     } catch {}

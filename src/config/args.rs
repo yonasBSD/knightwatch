@@ -18,6 +18,10 @@ pub struct CliArgs {
     #[arg(long, short, default_value_t = 8083)]
     pub port: u16,
 
+    /// Enable authentication
+    #[arg(long, default_value_t = false)]
+    pub enable_auth: bool,
+
     /// Disable the API server entirely
     #[arg(long, default_value_t = false)]
     pub no_api: bool,

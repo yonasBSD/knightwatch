@@ -296,6 +296,7 @@ Pass the PID of the root process you want to monitor. The server will start on `
 | `--pid <PID>` | — | PID of the root process to track (repeatable) |
 | `--host <HOST>` | `0.0.0.0` | Host address for the API server |
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
+| `--enable-auth` | `false` | Enable authentication for the API server |
 | `--no-api` | `false` | Disable the API server entirely |
 | `--no-dashboard` | `false` | Disable the web dashboard |
 | `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
@@ -518,6 +519,50 @@ Webhook URLs can also be stored in persistent config (merged with any provided v
 | `resources.battery_state_changed` | Battery state changed | `state` |
 
 Failed deliveries are retried up to 3 times with exponential backoff.
+
+---
+
+## Authentication
+
+When `--enable-auth` is passed, the API server requires authentication. Users are managed via the `users` subcommand and stored in a persistent `users.json` file in the application data directory.
+
+Each user has a username, a bcrypt-hashed password, and a Telegram token that can be used to link their Telegram account.
+
+### Managing Users
+
+**Add a user** (you will be prompted for a password):
+
+```bash
+knightwatch users add <USERNAME>
+```
+
+On success, the command prints the new user's Telegram token — save it if you plan to link Telegram.
+
+**Remove a user:**
+
+```bash
+knightwatch users remove <USERNAME>
+```
+
+**List all users** (shows Telegram link status):
+
+```bash
+knightwatch users list
+```
+
+**Show the Telegram token for a user:**
+
+```bash
+knightwatch users token <USERNAME>
+```
+
+This also indicates whether the user has already linked their Telegram account.
+
+**Remove all users:**
+
+```bash
+knightwatch users clear
+```
 
 ---
 

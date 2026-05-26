@@ -27,7 +27,12 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let bot = Bot::new(token);
     let (sender, receiver) = mpsc::channel(64);
     let sender = Arc::new(sender);
-    let state = State::new();
+    let chat_ids = get_users()
+        .get_telegram_chat_ids()
+        .into_iter()
+        .map(ChatId)
+        .collect();
+    let state = State::new(&chat_ids);
     let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
         .dependencies(dptree::deps![cancel_token.clone(), sender, state])
         .build();
@@ -55,7 +60,9 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
         }
         dispatcher.dispatch().await;
     });
-    tokio::spawn(async move { process_tracker_event_notifier(bot, receiver, cancel_token).await });
+    tokio::spawn(async move {
+        process_tracker_event_notifier(bot, receiver, chat_ids, cancel_token).await
+    });
     info!("Telegram Bot started");
     Some(TelegramBot { shutdown_token })
 }
@@ -63,6 +70,7 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
 pub async fn process_tracker_event_notifier(
     bot: Bot,
     mut new_chat_id_receiver: mpsc::Receiver<ChatId>,
+    mut chat_ids: Vec<ChatId>,
     cancel_token: CancellationToken,
 ) {
     let mut process_tracker_rx = process_tracker::subscribe_events();
@@ -71,11 +79,6 @@ pub async fn process_tracker_event_notifier(
     if crate::all_none!(process_tracker_rx, system_resources_rx, systemd_rx) {
         return;
     }
-    let mut chat_ids: Vec<ChatId> = get_users()
-        .get_telegram_chat_ids()
-        .into_iter()
-        .map(ChatId)
-        .collect();
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
@@ -226,7 +229,10 @@ async fn handle_help(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_screenshot(bot: Bot, msg: Message) -> Result<()> {
+async fn handle_screenshot(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
     bot.send_message(msg.chat.id, "🖼️ Taking Screenshots...")
         .await?;
     let images = crate::screen_capture::get_screenshots().await;
@@ -267,7 +273,10 @@ async fn handle_screenshot(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
+async fn handle_process(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
     for root_pid in process_tracker::get_root_pids().await {
         let (root, children, work_done) = tokio::join!(
             process_tracker::get_root(root_pid),
@@ -289,7 +298,10 @@ async fn handle_process(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_system_resources(bot: Bot, msg: Message) -> Result<()> {
+async fn handle_system_resources(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
     let system_snapshot = system_resources::get_snapshot().await;
     let message = match system_snapshot {
         Some(snap) => TelegramDisplay(&snap).to_string(),
@@ -301,7 +313,10 @@ async fn handle_system_resources(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_top_processes_menu(bot: Bot, msg: Message) -> Result<()> {
+async fn handle_top_processes_menu(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
     bot.send_message(msg.chat.id, "📊 *Top Processes* — sort by:")
         .parse_mode(ParseMode::MarkdownV2)
         .reply_markup(ReplyMarkup::Keyboard(top_processes_keyboard()))
@@ -463,6 +478,16 @@ async fn handle_auth_token(
     Ok(())
 }
 
+async fn send_auth_first_message(bot: Bot, chat_id: ChatId) -> Result<()> {
+    bot.send_message(
+        chat_id,
+        "🔒 Please authenticate first\\. Use /auth or the 🔑 Authenticate button\\.",
+    )
+    .parse_mode(ParseMode::MarkdownV2)
+    .await?;
+    Ok(())
+}
+
 async fn handle_plain_message(
     bot: Bot,
     msg: Message,
@@ -483,10 +508,10 @@ async fn handle_plain_message(
     }
     match text {
         "📋 Help" => handle_help(bot, msg).await?,
-        "🖼️ Screenshot" => handle_screenshot(bot, msg).await?,
-        "🖥️ System Resources" => handle_system_resources(bot, msg).await?,
-        "📊 Process" => handle_process(bot, msg).await?,
-        "📊 Top Processes" => handle_top_processes_menu(bot, msg).await?,
+        "🖼️ Screenshot" => handle_screenshot(bot, msg, state).await?,
+        "🖥️ System Resources" => handle_system_resources(bot, msg, state).await?,
+        "📊 Process" => handle_process(bot, msg, state).await?,
+        "📊 Top Processes" => handle_top_processes_menu(bot, msg, state).await?,
         "🔥 By CPU" => handle_top_processes_by(bot, msg, process_tracker::SortKey::Cpu).await?,
         "🧠 By Memory" => {
             handle_top_processes_by(bot, msg, process_tracker::SortKey::Memory).await?

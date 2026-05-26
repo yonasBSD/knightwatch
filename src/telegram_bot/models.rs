@@ -4,7 +4,7 @@ use std::{
 };
 use teloxide::types::ChatId;
 
-use super::utils::{escape_mdv2, health_emoji};
+use super::utils::escape_mdv2;
 use crate::{
     systemd::UnitActiveState,
     utils::{format_bytes, format_uptime},
@@ -40,12 +40,19 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(pre_auth_ids: &Vec<ChatId>) -> Self {
+        let chats = Arc::new(Mutex::new(HashMap::new()));
+        if let Ok(mut g) = chats.lock() {
+            for &chat_id in pre_auth_ids {
+                g.insert(chat_id, Chat::new_authed());
+            }
+        }
         Self {
-            chats: Arc::new(Mutex::new(HashMap::new())),
+            chats,
             auth_enabled: crate::config::get_config().args.enable_auth,
         }
     }
+
     pub fn get_chat_state(&self, chat_id: ChatId) -> ChatState {
         self.chats
             .lock()
@@ -64,28 +71,25 @@ impl State {
 
     pub fn set_chat_state(&self, chat_id: ChatId, state: ChatState) {
         if let Ok(mut g) = self.chats.lock() {
-            g.entry(chat_id)
-                .or_insert_with(|| Chat {
-                    chat_state: ChatState::Idle,
-                    auth_state: AuthState::Unauthenticated,
-                })
-                .chat_state = state;
+            g.entry(chat_id).or_insert_with(Chat::new).chat_state = state;
         }
     }
 
     pub fn set_chat_auth(&self, chat_id: ChatId, auth: AuthState) {
         if let Ok(mut g) = self.chats.lock() {
-            g.entry(chat_id)
-                .or_insert_with(|| Chat {
-                    chat_state: ChatState::Idle,
-                    auth_state: AuthState::Unauthenticated,
-                })
-                .auth_state = auth;
+            g.entry(chat_id).or_insert_with(Chat::new).auth_state = auth;
         }
     }
 
     pub fn set_chat_state_idle(&self, chat_id: ChatId) {
         self.set_chat_state(chat_id, ChatState::Idle);
+    }
+
+    pub fn is_authorized(&self, chat_id: ChatId) -> bool {
+        if !self.auth_enabled {
+            return true;
+        }
+        self.get_chat_auth(chat_id) == AuthState::Authenticated
     }
 }
 
@@ -93,6 +97,22 @@ impl State {
 pub struct Chat {
     pub chat_state: ChatState,
     pub auth_state: AuthState,
+}
+
+impl Chat {
+    pub fn new() -> Self {
+        Self {
+            chat_state: ChatState::Idle,
+            auth_state: AuthState::Unauthenticated,
+        }
+    }
+
+    pub fn new_authed() -> Self {
+        Self {
+            chat_state: ChatState::Idle,
+            auth_state: AuthState::Authenticated,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -389,7 +409,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_resources::Syst
         write!(
             f,
             "\n{emoji} *Health*: `{health:?}`",
-            emoji = health_emoji(&s.health),
+            emoji = super::utils::health_emoji(&s.health),
             health = s.health,
         )?;
 

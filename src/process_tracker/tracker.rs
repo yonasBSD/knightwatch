@@ -251,7 +251,7 @@ impl ProcessTracker {
         // ----------------------------------------------------------------
         if root_process.first_tick {
             self.emit_event(ProcessTrackerEvent::InitialSnapshot {
-                root: root_snap.clone().unwrap(),
+                root: root_snap.clone(),
                 children: child_snaps.clone(),
             });
             if child_snaps.is_empty() {

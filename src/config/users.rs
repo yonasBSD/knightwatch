@@ -20,7 +20,7 @@ pub struct Users {
 impl JsonStore for Users {
     const NAME: &'static str = "users";
     fn path() -> std::path::PathBuf {
-        super::paths::file_path("users.json")
+        super::paths::data_file_path("users.json")
     }
 }
 

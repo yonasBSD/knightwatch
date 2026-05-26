@@ -16,9 +16,10 @@ pub trait JsonStore: Sized + Default + serde::Serialize + for<'de> serde::Deseri
     }
 
     fn save(&self) -> Result<()> {
-        let dir = super::paths::dir_path();
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| Error::Config(format!("Failed to create config directory: {e}")))?;
+        if let Some(dir) = Self::path().parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| Error::Config(format!("Failed to create directory: {e}")))?;
+        }
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| Error::Config(format!("Failed to serialize {}: {e}", Self::NAME)))?;
         std::fs::write(Self::path(), contents)

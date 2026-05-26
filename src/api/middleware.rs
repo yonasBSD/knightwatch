@@ -18,7 +18,7 @@ pub async fn auth_middleware(
     };
     if super::session::get_sessions()
         .read()
-        .unwrap()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .get(token)
         .is_none()
     {

@@ -44,7 +44,7 @@ impl From<&ProcessTrackerEvent> for WebhookPayload {
             ProcessTrackerEvent::InitialSnapshot { root, children } => (
                 "process.initial_snapshot",
                 json!({
-                    "root_pid": root.pid,
+                    "root_pid": if let Some(root) = root { root.pid } else { 0 },
                     "child_count": children.len()
                 }),
             ),

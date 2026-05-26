@@ -12,8 +12,12 @@ const SPECIAL: &[char] = &[
 pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
     match event {
         ProcessTrackerEvent::InitialSnapshot { root, children } => {
-            let root_info = TelegramDisplay(root);
-            let mut msg = format!("🟢 *Initial Snapshot*\n\n*Root:*\n{root_info}");
+            let mut msg = if let Some(root) = root {
+                let root_info = TelegramDisplay(root);
+                format!("🟢 *Initial Snapshot*\n\n*Root:*\n{root_info}")
+            } else {
+                format!("🟢 *Initial Snapshot*\n\n*Root:*\n_none_")
+            };
             if children.is_empty() {
                 msg.push_str("\n\n*Children:* _none_");
             } else {

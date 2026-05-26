@@ -9,7 +9,7 @@ use super::structs::ProcessSnapshot;
 pub enum ProcessTrackerEvent {
     /// Emitted on the very first tick; contains everything we found.
     InitialSnapshot {
-        root: ProcessSnapshot,
+        root: Option<ProcessSnapshot>,
         children: Vec<ProcessSnapshot>,
     },
     /// One or more new child processes appeared.

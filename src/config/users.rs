@@ -29,19 +29,12 @@ impl Users {
         self.users.iter().find(|u| u.username == username)
     }
 
-    #[allow(unused)]
-    pub fn find_mut(&mut self, username: &str) -> Option<&mut User> {
-        self.users.iter_mut().find(|u| u.username == username)
-    }
-
-    #[allow(unused)]
-    pub fn find_by_telegram_token(&self, token: &str) -> Option<&User> {
-        self.users.iter().find(|u| u.telegram_token == token)
-    }
-
-    #[allow(unused)]
     pub fn find_by_telegram_token_mut(&mut self, token: &str) -> Option<&mut User> {
         self.users.iter_mut().find(|u| u.telegram_token == token)
+    }
+
+    pub fn get_telegram_chat_ids(&self) -> Vec<i64> {
+        self.users.iter().filter_map(|u| u.telegram_chat_id).collect()
     }
 
     pub fn add(&mut self, user: User) -> Result<()> {
@@ -63,7 +56,6 @@ impl Users {
         Ok(())
     }
 
-    #[allow(unused)]
     pub fn verify_password(&self, username: &str, password: &str) -> Result<bool> {
         let user = self
             .find(username)
@@ -86,7 +78,6 @@ pub fn hash_password(password: &str) -> Result<String> {
 
 static USERS: OnceLock<Users> = OnceLock::new();
 
-#[allow(unused)]
 pub fn get_users() -> &'static Users {
     USERS.get().expect("Users not initialized")
 }
@@ -97,4 +88,15 @@ pub fn load_users() -> Result<()> {
         .set(users)
         .map_err(|_| Error::Config("Users already initialized".to_string()))?;
     Ok(())
+}
+
+pub fn set_user_chat_id(token: String, chat_id: i64) -> Result<bool> {
+    let mut users = Users::load()?;
+    if let Some(user) = users.find_by_telegram_token_mut(&token) {
+        user.telegram_chat_id = Some(chat_id);
+        users.save()?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }

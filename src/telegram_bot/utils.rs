@@ -17,7 +17,7 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
             if children.is_empty() {
                 msg.push_str("\n\n*Children:* _none_");
             } else {
-                msg.push_str(&format!("\n\n*Children* ({}):", children.len()));
+                msg.push_str(&format!("\n\n*Children* \\({}\\):", children.len()));
                 for child in children {
                     let child_info = TelegramDisplay(child);
                     msg.push_str(&format!("\n{child_info}\n"));
@@ -27,7 +27,7 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
         }
         ProcessTrackerEvent::ChildrenAppeared { pid, children } => {
             let mut msg = format!(
-                "🆕 *New Children Appeared* ({})\n*Root:* `{pid}`",
+                "🆕 *New Children Appeared* \\({}\\)\n*Root:* `{pid}`",
                 children.len()
             );
             for child in children {

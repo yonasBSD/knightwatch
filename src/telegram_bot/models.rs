@@ -1,3 +1,9 @@
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use teloxide::types::ChatId;
+
 use super::utils::{escape_mdv2, health_emoji};
 use crate::{
     systemd::UnitActiveState,
@@ -13,6 +19,8 @@ pub enum Command {
     Menu,
     #[command(description = "Show this help message")]
     Help,
+    #[command(description = "Authenticate using token")]
+    Auth,
     #[command(description = "Get Screenshot of all monitors")]
     Screenshot,
     #[command(description = "Get Process Info")]
@@ -25,10 +33,79 @@ pub enum Command {
     StopKnightWatch,
 }
 
+#[derive(Debug, Clone)]
+pub struct State {
+    chats: Arc<Mutex<HashMap<ChatId, Chat>>>,
+    auth_enabled: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            chats: Arc::new(Mutex::new(HashMap::new())),
+            auth_enabled: crate::config::get_config().args.enable_auth,
+        }
+    }
+    pub fn get_chat_state(&self, chat_id: ChatId) -> ChatState {
+        self.chats
+            .lock()
+            .ok()
+            .and_then(|g| g.get(&chat_id).map(|c| c.chat_state.clone()))
+            .unwrap_or(ChatState::Idle)
+    }
+
+    pub fn get_chat_auth(&self, chat_id: ChatId) -> AuthState {
+        self.chats
+            .lock()
+            .ok()
+            .and_then(|g| g.get(&chat_id).map(|c| c.auth_state.clone()))
+            .unwrap_or(AuthState::Unauthenticated)
+    }
+
+    pub fn set_chat_state(&self, chat_id: ChatId, state: ChatState) {
+        if let Ok(mut g) = self.chats.lock() {
+            g.entry(chat_id)
+                .or_insert_with(|| Chat {
+                    chat_state: ChatState::Idle,
+                    auth_state: AuthState::Unauthenticated,
+                })
+                .chat_state = state;
+        }
+    }
+
+    pub fn set_chat_auth(&self, chat_id: ChatId, auth: AuthState) {
+        if let Ok(mut g) = self.chats.lock() {
+            g.entry(chat_id)
+                .or_insert_with(|| Chat {
+                    chat_state: ChatState::Idle,
+                    auth_state: AuthState::Unauthenticated,
+                })
+                .auth_state = auth;
+        }
+    }
+
+    pub fn set_chat_state_idle(&self, chat_id: ChatId) {
+        self.set_chat_state(chat_id, ChatState::Idle);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Chat {
+    pub chat_state: ChatState,
+    pub auth_state: AuthState,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChatState {
     Idle,
     AwaitingUnitName,
+    AwaitingAuthToken,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AuthState {
+    Unauthenticated,
+    Authenticated,
 }
 
 pub struct TelegramBot {

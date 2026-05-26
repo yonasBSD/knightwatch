@@ -6,4 +6,4 @@ mod store;
 mod users;
 
 pub use app::{get_config, handle_command, init_config};
-pub use users::{load_users, get_users};
+pub use users::{get_users, load_users, set_user_chat_id};

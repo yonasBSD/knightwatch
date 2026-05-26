@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 use teloxide::{
     prelude::*,
     types::{
@@ -13,12 +10,10 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    models::{ChatState, Command, TelegramBot, TelegramDisplay},
+    models::{ChatState, Command, State, TelegramBot, TelegramDisplay},
     utils::escape_mdv2,
 };
 use crate::{prelude::*, process_tracker, system_resources, systemd, utils::recv_or_pending};
-
-type ChatStateMap = Arc<Mutex<HashMap<ChatId, ChatState>>>;
 
 pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let config = get_config();
@@ -32,9 +27,9 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let bot = Bot::new(token);
     let (sender, receiver) = mpsc::channel(64);
     let sender = Arc::new(sender);
-    let chat_states: ChatStateMap = Arc::new(Mutex::new(HashMap::new()));
+    let state = State::new();
     let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
-        .dependencies(dptree::deps![cancel_token.clone(), sender, chat_states])
+        .dependencies(dptree::deps![cancel_token.clone(), sender, state])
         .build();
     let shutdown_token = dispatcher.shutdown_token();
     let bot_clone = bot.clone();
@@ -76,11 +71,15 @@ pub async fn process_tracker_event_notifier(
     if crate::all_none!(process_tracker_rx, system_resources_rx, systemd_rx) {
         return;
     }
-    let mut chat_ids: Vec<ChatId> = vec![];
+    let mut chat_ids: Vec<ChatId> = get_users()
+        .get_telegram_chat_ids()
+        .into_iter()
+        .map(ChatId)
+        .collect();
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
-                info!("Cancelled while waiting for Telegram");
+                info!("Cancelled while waiting for events");
                 return;
             }
             Some(chat_id) = new_chat_id_receiver.recv() => {
@@ -138,6 +137,7 @@ fn main_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("🔧 Systemd"),
             KeyboardButton::new("📋 Help"),
         ],
+        vec![KeyboardButton::new("🔑 Authenticate")],
         vec![KeyboardButton::new("🔴 Stop")],
     ])
     .resize_keyboard()
@@ -170,11 +170,16 @@ fn awaiting_unit_name_keyboard() -> KeyboardMarkup {
     KeyboardMarkup::new([[KeyboardButton::new("❌ Cancel")]]).resize_keyboard()
 }
 
+fn awaiting_auth_token_keyboard() -> KeyboardMarkup {
+    KeyboardMarkup::new([[KeyboardButton::new("❌ Cancel")]]).resize_keyboard()
+}
+
 fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
     let command_handler = teloxide::filter_command::<Command, _>()
         .branch(dptree::case![Command::Start].endpoint(handle_start))
         .branch(dptree::case![Command::Menu].endpoint(handle_start))
         .branch(dptree::case![Command::Help].endpoint(handle_help))
+        .branch(dptree::case![Command::Auth].endpoint(handle_auth_prompt))
         .branch(dptree::case![Command::Screenshot].endpoint(handle_screenshot))
         .branch(dptree::case![Command::SystemSnapshot].endpoint(handle_system_resources))
         .branch(dptree::case![Command::Process].endpoint(handle_process))
@@ -190,12 +195,12 @@ async fn handle_start(
     bot: Bot,
     msg: Message,
     new_chat_id_sender: Arc<mpsc::Sender<ChatId>>,
-    chat_states: ChatStateMap,
+    state: State,
 ) -> Result<()> {
     if let Err(err) = new_chat_id_sender.send(msg.chat.id).await {
         error!("Failed to send new chat id to notifier: {err}");
     }
-    set_state(&chat_states, msg.chat.id, ChatState::Idle);
+    state.set_chat_state_idle(msg.chat.id);
     bot.send_message(
         msg.chat.id,
         "🤖 *Knight Watch BOT*\n\nChoose an action below:",
@@ -212,6 +217,7 @@ async fn handle_help(bot: Bot, msg: Message) -> Result<()> {
         "🚀 *This is a bot ran by Knight Watch:*\n\
          • Receive Screenshot of Monitors\n\
          • Get Process Info\n\
+         • Get System Resources\n\
          • Monitor Systemd Units\n\
          • Stop the knight Watch",
     )
@@ -341,8 +347,8 @@ async fn handle_stop(bot: Bot, msg: Message, cancel_token: CancellationToken) ->
     Ok(())
 }
 
-async fn handle_systemd_menu(bot: Bot, msg: Message, chat_states: ChatStateMap) -> Result<()> {
-    set_state(&chat_states, msg.chat.id, ChatState::Idle);
+async fn handle_systemd_menu(bot: Bot, msg: Message, state: State) -> Result<()> {
+    state.set_chat_state_idle(msg.chat.id);
     bot.send_message(msg.chat.id, "🔧 *Systemd* — choose an action:")
         .parse_mode(ParseMode::MarkdownV2)
         .reply_markup(ReplyMarkup::Keyboard(systemd_keyboard()))
@@ -382,12 +388,8 @@ async fn handle_systemd_failed(bot: Bot, msg: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_systemd_unit_prompt(
-    bot: Bot,
-    msg: Message,
-    chat_states: ChatStateMap,
-) -> Result<()> {
-    set_state(&chat_states, msg.chat.id, ChatState::AwaitingUnitName);
+async fn handle_systemd_unit_prompt(bot: Bot, msg: Message, state: State) -> Result<()> {
+    state.set_chat_state(msg.chat.id, ChatState::AwaitingUnitName);
     bot.send_message(msg.chat.id, "🔍 Type the unit name (e.g. nginx.service):")
         .reply_markup(ReplyMarkup::Keyboard(awaiting_unit_name_keyboard()))
         .await?;
@@ -397,10 +399,10 @@ async fn handle_systemd_unit_prompt(
 async fn handle_systemd_unit_lookup(
     bot: Bot,
     msg: Message,
-    chat_states: ChatStateMap,
+    state: State,
     unit_name: String,
 ) -> Result<()> {
-    set_state(&chat_states, msg.chat.id, ChatState::Idle);
+    state.set_chat_state_idle(msg.chat.id);
     let unit = systemd::get_unit(unit_name.clone()).await;
     let message = match unit {
         Some(u) => TelegramDisplay(&u).to_string(),
@@ -413,20 +415,71 @@ async fn handle_systemd_unit_lookup(
     Ok(())
 }
 
+async fn handle_auth_prompt(bot: Bot, msg: Message, state: State) -> Result<()> {
+    state.set_chat_state(msg.chat.id, ChatState::AwaitingAuthToken);
+    bot.send_message(
+        msg.chat.id,
+        "🔑 Please enter your authentication token \\(6–8 digits\\):",
+    )
+    .parse_mode(ParseMode::MarkdownV2)
+    .reply_markup(ReplyMarkup::Keyboard(awaiting_auth_token_keyboard()))
+    .await?;
+    Ok(())
+}
+
+async fn handle_auth_token(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    token_input: String,
+) -> Result<()> {
+    let is_valid_format = token_input.len() >= 6
+        && token_input.len() <= 8
+        && token_input.chars().all(|c| c.is_ascii_digit());
+    if !is_valid_format {
+        bot.send_message(
+            msg.chat.id,
+            "⚠️ Invalid token\\. Please enter a numeric token between 6 and 8 digits:",
+        )
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(awaiting_auth_token_keyboard()))
+        .await?;
+        return Ok(());
+    }
+    if crate::config::set_user_chat_id(token_input, msg.chat.id.0)? {
+        state.set_chat_state_idle(msg.chat.id);
+        state.set_chat_auth(msg.chat.id, super::models::AuthState::Authenticated);
+        bot.send_message(msg.chat.id, "✅ You are now *authenticated*\\!")
+            .parse_mode(ParseMode::MarkdownV2)
+            .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
+            .await?;
+    } else {
+        state.set_chat_state_idle(msg.chat.id);
+        bot.send_message(msg.chat.id, "❌ Authentication failed\\. Invalid token\\.")
+            .parse_mode(ParseMode::MarkdownV2)
+            .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
+            .await?;
+    }
+    Ok(())
+}
+
 async fn handle_plain_message(
     bot: Bot,
     msg: Message,
     cancel_token: CancellationToken,
-    chat_states: ChatStateMap,
+    state: State,
 ) -> Result<()> {
     let msg_clone = msg.clone();
     let text = match msg_clone.text() {
         Some(t) => t,
         None => return Ok(()),
     };
-    let state = get_state(&chat_states, msg.chat.id);
-    if state == ChatState::AwaitingUnitName && text != "❌ Cancel" {
-        return handle_systemd_unit_lookup(bot, msg, chat_states, text.to_string()).await;
+    let chat_state = state.get_chat_state(msg.chat.id);
+    if chat_state == ChatState::AwaitingUnitName && text != "❌ Cancel" {
+        return handle_systemd_unit_lookup(bot, msg, state, text.to_string()).await;
+    }
+    if chat_state == ChatState::AwaitingAuthToken && text != "❌ Cancel" {
+        return handle_auth_token(bot, msg, state, text.to_string()).await;
     }
     match text {
         "📋 Help" => handle_help(bot, msg).await?,
@@ -438,12 +491,13 @@ async fn handle_plain_message(
         "🧠 By Memory" => {
             handle_top_processes_by(bot, msg, process_tracker::SortKey::Memory).await?
         }
-        "🔧 Systemd" => handle_systemd_menu(bot, msg, chat_states).await?,
+        "🔧 Systemd" => handle_systemd_menu(bot, msg, state).await?,
         "📋 Systemd Overview" => handle_systemd_overview(bot, msg).await?,
         "🔴 Failed Units" => handle_systemd_failed(bot, msg).await?,
-        "🔍 Unit Status" => handle_systemd_unit_prompt(bot, msg, chat_states).await?,
+        "🔍 Unit Status" => handle_systemd_unit_prompt(bot, msg, state).await?,
+        "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {
-            set_state(&chat_states, msg.chat.id, ChatState::Idle);
+            state.set_chat_state_idle(msg.chat.id);
             bot.send_message(msg.chat.id, "Cancelled")
                 .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
                 .await?;
@@ -460,17 +514,4 @@ async fn handle_plain_message(
         }
     }
     Ok(())
-}
-
-fn set_state(map: &ChatStateMap, chat_id: ChatId, state: ChatState) {
-    if let Ok(mut guard) = map.lock() {
-        guard.insert(chat_id, state);
-    }
-}
-
-fn get_state(map: &ChatStateMap, chat_id: ChatId) -> ChatState {
-    map.lock()
-        .ok()
-        .and_then(|g| g.get(&chat_id).cloned())
-        .unwrap_or(ChatState::Idle)
 }

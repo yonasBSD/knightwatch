@@ -122,6 +122,15 @@ async fn broadcast_message(bot: &Bot, state: &mut State, message: &str) {
     }
 }
 
+async fn send_chat_state(tx: &mpsc::Sender<(ChatId, AuthState)>, value: (ChatId, AuthState)) {
+    if tx.is_closed() {
+        return;
+    }
+    if let Err(err) = tx.send(value).await {
+        warn!("Chat state channel closed unexpectedly: {err}");
+    }
+}
+
 fn main_keyboard() -> KeyboardMarkup {
     KeyboardMarkup::new([
         vec![
@@ -196,13 +205,11 @@ async fn handle_start(
     chat_state_tx: Arc<mpsc::Sender<(ChatId, AuthState)>>,
     state: State,
 ) -> Result<()> {
-    state.set_chat_state_idle(msg.chat.id);
-    if let Err(err) = chat_state_tx
-        .send((msg.chat.id, state.get_chat_auth(msg.chat.id)))
-        .await
-    {
-        error!("Failed to send new chat id to notifier: {err}");
-    }
+    send_chat_state(
+        &chat_state_tx,
+        (msg.chat.id, state.get_chat_auth(msg.chat.id)),
+    )
+    .await;
     bot.send_message(
         msg.chat.id,
         "🤖 *Knight Watch BOT*\n\nChoose an action below:",
@@ -465,12 +472,7 @@ async fn handle_auth_token(
         state.set_chat_state_idle(msg.chat.id);
         state.set_chat_auth(msg.chat.id, AuthState::Authenticated);
         state.set_chat_state_idle(msg.chat.id);
-        if let Err(err) = chat_state_tx
-            .send((msg.chat.id, AuthState::Authenticated))
-            .await
-        {
-            error!("Failed to send new chat id to notifier: {err}");
-        }
+        send_chat_state(&chat_state_tx, (msg.chat.id, AuthState::Authenticated)).await;
         bot.send_message(msg.chat.id, "✅ You are now *authenticated*\\!")
             .parse_mode(ParseMode::MarkdownV2)
             .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))

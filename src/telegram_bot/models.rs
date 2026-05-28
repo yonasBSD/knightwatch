@@ -6,6 +6,7 @@ use teloxide::types::ChatId;
 
 use super::utils::escape_mdv2;
 use crate::{
+    prelude::*,
     systemd::UnitActiveState,
     utils::{format_bytes, format_uptime},
 };
@@ -40,16 +41,52 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(pre_auth_ids: &Vec<ChatId>) -> Self {
+    pub fn new() -> Self {
         let chats = Arc::new(Mutex::new(HashMap::new()));
+        let pre_auth_ids = get_users().get_telegram_chat_ids().into_iter().map(ChatId);
         if let Ok(mut g) = chats.lock() {
-            for &chat_id in pre_auth_ids {
+            for chat_id in pre_auth_ids {
                 g.insert(chat_id, Chat::new_authed());
             }
         }
         Self {
             chats,
-            auth_enabled: crate::config::get_config().args.enable_auth,
+            auth_enabled: get_config().args.enable_auth,
+        }
+    }
+
+    pub fn get_chat_ids(&self) -> Vec<ChatId> {
+        self.chats
+            .lock()
+            .ok()
+            .map(|g| g.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn get_authed_chat_ids(&self) -> Vec<ChatId> {
+        self.chats
+            .lock()
+            .ok()
+            .map(|g| {
+                g.iter()
+                    .filter(|(_, chat)| chat.auth_state == AuthState::Authenticated)
+                    .map(|(&id, _)| id)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn get_relevant_chat_ids(&self) -> Vec<ChatId> {
+        if self.auth_enabled {
+            self.get_authed_chat_ids()
+        } else {
+            self.get_chat_ids()
+        }
+    }
+
+    pub fn remove_chat(&mut self, chat_id: ChatId) {
+        if let Ok(mut g) = self.chats.lock() {
+            g.remove(&chat_id);
         }
     }
 

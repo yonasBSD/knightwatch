@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    models::{ChatState, Command, State, TelegramBot, TelegramDisplay},
+    models::{AuthState, ChatState, Command, State, TelegramBot, TelegramDisplay},
     utils::escape_mdv2,
 };
 use crate::{prelude::*, process_tracker, system_resources, systemd, utils::recv_or_pending};
@@ -27,14 +27,9 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let bot = Bot::new(token);
     let (sender, receiver) = mpsc::channel(64);
     let sender = Arc::new(sender);
-    let chat_ids = get_users()
-        .get_telegram_chat_ids()
-        .into_iter()
-        .map(ChatId)
-        .collect();
-    let state = State::new(&chat_ids);
+    let state = State::new();
     let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
-        .dependencies(dptree::deps![cancel_token.clone(), sender, state])
+        .dependencies(dptree::deps![cancel_token.clone(), sender, state.clone()])
         .build();
     let shutdown_token = dispatcher.shutdown_token();
     let bot_clone = bot.clone();
@@ -61,7 +56,7 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
         dispatcher.dispatch().await;
     });
     tokio::spawn(async move {
-        process_tracker_event_notifier(bot, receiver, chat_ids, cancel_token).await
+        process_tracker_event_notifier(bot, receiver, state, cancel_token).await
     });
     info!("Telegram Bot started");
     Some(TelegramBot { shutdown_token })
@@ -69,8 +64,8 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
 
 pub async fn process_tracker_event_notifier(
     bot: Bot,
-    mut new_chat_id_receiver: mpsc::Receiver<ChatId>,
-    mut chat_ids: Vec<ChatId>,
+    mut chat_state_rx: mpsc::Receiver<(ChatId, AuthState)>,
+    mut state: State,
     cancel_token: CancellationToken,
 ) {
     let mut process_tracker_rx = process_tracker::subscribe_events();
@@ -85,32 +80,33 @@ pub async fn process_tracker_event_notifier(
                 info!("Cancelled while waiting for events");
                 return;
             }
-            Some(chat_id) = new_chat_id_receiver.recv() => {
-                chat_ids.push(chat_id);
-                info!("New chat id registered: {chat_id}");
+            Some((chat_id, auth_state)) = chat_state_rx.recv() => {
+                state.set_chat_auth(chat_id, auth_state);
+                info!("Chat id registered or authenticated: {chat_id}");
             }
             event = recv_or_pending(&mut process_tracker_rx, "telegram: process tracker") => {
                 let message = super::utils::format_process_tracker_event(&event);
-                broadcast_message(&bot, &mut chat_ids, &message).await;
+                broadcast_message(&bot, &mut state, &message).await;
             }
             event = recv_or_pending(&mut system_resources_rx, "telegram: system resources") => {
                 let message = super::utils::format_system_resources_event(&event);
                 if let Some(msg) = message {
-                    broadcast_message(&bot, &mut chat_ids, &msg).await;
+                    broadcast_message(&bot, &mut state, &msg).await;
                 }
             }
             event = recv_or_pending(&mut systemd_rx, "telegram: systemd") => {
                 let message = super::utils::format_systemd_event(&event);
                 if let Some(msg) = message {
-                    broadcast_message(&bot, &mut chat_ids, &msg).await;
+                    broadcast_message(&bot, &mut state, &msg).await;
                 }
             }
         }
     }
 }
 
-async fn broadcast_message(bot: &Bot, chat_ids: &mut Vec<ChatId>, message: &str) {
+async fn broadcast_message(bot: &Bot, state: &mut State, message: &str) {
     let mut dead = vec![];
+    let chat_ids = state.get_relevant_chat_ids();
     for (i, &chat_id) in chat_ids.iter().enumerate() {
         if let Err(err) = bot
             .send_message(chat_id, message)
@@ -121,8 +117,8 @@ async fn broadcast_message(bot: &Bot, chat_ids: &mut Vec<ChatId>, message: &str)
             dead.push(i);
         }
     }
-    for i in dead.into_iter().rev() {
-        chat_ids.swap_remove(i);
+    for i in dead.iter().rev() {
+        state.remove_chat(chat_ids[*i]);
     }
 }
 
@@ -197,13 +193,16 @@ fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
 async fn handle_start(
     bot: Bot,
     msg: Message,
-    new_chat_id_sender: Arc<mpsc::Sender<ChatId>>,
+    chat_state_tx: Arc<mpsc::Sender<(ChatId, AuthState)>>,
     state: State,
 ) -> Result<()> {
-    if let Err(err) = new_chat_id_sender.send(msg.chat.id).await {
+    state.set_chat_state_idle(msg.chat.id);
+    if let Err(err) = chat_state_tx
+        .send((msg.chat.id, state.get_chat_auth(msg.chat.id)))
+        .await
+    {
         error!("Failed to send new chat id to notifier: {err}");
     }
-    state.set_chat_state_idle(msg.chat.id);
     bot.send_message(
         msg.chat.id,
         "🤖 *Knight Watch BOT*\n\nChoose an action below:",
@@ -445,6 +444,7 @@ async fn handle_auth_prompt(bot: Bot, msg: Message, state: State) -> Result<()> 
 async fn handle_auth_token(
     bot: Bot,
     msg: Message,
+    chat_state_tx: Arc<mpsc::Sender<(ChatId, AuthState)>>,
     state: State,
     token_input: String,
 ) -> Result<()> {
@@ -463,7 +463,14 @@ async fn handle_auth_token(
     }
     if crate::config::set_user_chat_id(token_input, msg.chat.id.0)? {
         state.set_chat_state_idle(msg.chat.id);
-        state.set_chat_auth(msg.chat.id, super::models::AuthState::Authenticated);
+        state.set_chat_auth(msg.chat.id, AuthState::Authenticated);
+        state.set_chat_state_idle(msg.chat.id);
+        if let Err(err) = chat_state_tx
+            .send((msg.chat.id, AuthState::Authenticated))
+            .await
+        {
+            error!("Failed to send new chat id to notifier: {err}");
+        }
         bot.send_message(msg.chat.id, "✅ You are now *authenticated*\\!")
             .parse_mode(ParseMode::MarkdownV2)
             .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
@@ -491,6 +498,7 @@ async fn send_auth_first_message(bot: Bot, chat_id: ChatId) -> Result<()> {
 async fn handle_plain_message(
     bot: Bot,
     msg: Message,
+    chat_state_tx: Arc<mpsc::Sender<(ChatId, AuthState)>>,
     cancel_token: CancellationToken,
     state: State,
 ) -> Result<()> {
@@ -504,7 +512,7 @@ async fn handle_plain_message(
         return handle_systemd_unit_lookup(bot, msg, state, text.to_string()).await;
     }
     if chat_state == ChatState::AwaitingAuthToken && text != "❌ Cancel" {
-        return handle_auth_token(bot, msg, state, text.to_string()).await;
+        return handle_auth_token(bot, msg, chat_state_tx, state, text.to_string()).await;
     }
     match text {
         "📋 Help" => handle_help(bot, msg).await?,

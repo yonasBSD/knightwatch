@@ -16,7 +16,7 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
                 let root_info = TelegramDisplay(root);
                 format!("🟢 *Initial Snapshot*\n\n*Root:*\n{root_info}")
             } else {
-                format!("🟢 *Initial Snapshot*\n\n*Root:*\n_none_")
+                "🟢 *Initial Snapshot*\n\n*Root:*\n_none_".to_string()
             };
             if children.is_empty() {
                 msg.push_str("\n\n*Children:* _none_");

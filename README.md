@@ -25,6 +25,40 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 
 ---
 
+## Installation
+
+### Shell (macOS & Linux)
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/YofaGh/knightwatch/releases/latest/download/knightwatch-installer.sh | sh
+```
+
+### PowerShell (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/YofaGh/knightwatch/releases/latest/download/knightwatch-installer.ps1 | iex"
+```
+
+### Homebrew (macOS)
+
+```bash
+brew install YofaGh/tap/knightwatch
+```
+
+### Pre-built Binaries
+
+Standalone binaries for all supported platforms are available on the [Releases page](https://github.com/YofaGh/knightwatch/releases/latest). Download the archive for your platform, extract it, and place the binary somewhere on your `PATH`.
+
+### Updating
+
+If you installed via the shell or PowerShell installer, a `knightwatch-update` binary is included alongside the main binary. Run it to update to the latest release:
+
+```bash
+knightwatch-update
+```
+
+---
+
 ## How It Works
 
 The Rust backend exposes a small HTTP API (served by Axum) that the frontend polls every 2 seconds:

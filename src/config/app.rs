@@ -50,15 +50,15 @@ fn handle_config_action(action: &ConfigAction) -> Result<()> {
             let config = get_config();
             match field {
                 ConfigField::TelegramToken { .. } => match &config.persistent.telegram_token {
-                    Some(t) => info!("telegram_token = {t}"),
-                    None => info!("telegram_token is not set"),
+                    Some(t) => println!("telegram_token = {t}"),
+                    None => println!("telegram_token is not set"),
                 },
                 ConfigField::WebhookUrls { .. } => {
                     if config.persistent.webhook_urls.is_empty() {
-                        info!("no webhook_urls configured");
+                        println!("no webhook_urls configured");
                     } else {
                         for url in &config.persistent.webhook_urls {
-                            info!("webhook_url = {url}");
+                            println!("webhook_url = {url}");
                         }
                     }
                 }
@@ -71,34 +71,34 @@ fn handle_config_action(action: &ConfigAction) -> Result<()> {
                     if *clear {
                         persistent.telegram_token = None;
                         persistent.save()?;
-                        info!("telegram_token cleared.");
+                        println!("telegram_token cleared.");
                     } else if value.is_some() {
                         persistent.telegram_token = value.clone();
                         persistent.save()?;
-                        info!("telegram_token updated.");
+                        println!("telegram_token updated.");
                     } else {
-                        info!("No action: provide a value or --clear.");
+                        println!("No action: provide a value or --clear.");
                     }
                 }
                 ConfigField::WebhookUrls { add, remove, clear } => {
                     if *clear {
                         persistent.webhook_urls.clear();
-                        info!("webhook_urls cleared.");
+                        println!("webhook_urls cleared.");
                     } else {
                         for url in remove {
                             if persistent.webhook_urls.contains(url) {
                                 persistent.webhook_urls.retain(|u| u != url);
-                                info!("webhook_url removed: {url}");
+                                println!("webhook_url removed: {url}");
                             } else {
-                                info!("webhook_url not found: {url}");
+                                println!("webhook_url not found: {url}");
                             }
                         }
                         for url in add {
                             if !persistent.webhook_urls.contains(url) {
                                 persistent.webhook_urls.push(url.clone());
-                                info!("webhook_url added: {url}");
+                                println!("webhook_url added: {url}");
                             } else {
-                                info!("webhook_url already exists: {url}");
+                                println!("webhook_url already exists: {url}");
                             }
                         }
                     }
@@ -125,26 +125,26 @@ fn handle_users_action(action: &UsersAction) -> Result<()> {
                 telegram_chat_id: None,
             })?;
             users.save()?;
-            info!("user added: {username}");
-            info!("telegram token: {telegram_token}");
+            println!("user added: {username}");
+            println!("telegram token: {telegram_token}");
         }
         UsersAction::Remove { username } => {
             let mut users = Users::load()?;
             users.remove(username)?;
             users.save()?;
-            info!("user removed: {username}");
+            println!("user removed: {username}");
         }
         UsersAction::List => {
             let users = Users::load()?;
             if users.users.is_empty() {
-                info!("no users configured");
+                println!("no users configured");
             } else {
                 for user in &users.users {
                     let telegram_status = match user.telegram_chat_id {
                         Some(_) => "linked",
                         None => "not linked",
                     };
-                    info!("user = {} (telegram: {telegram_status})", user.username);
+                    println!("user = {} (telegram: {telegram_status})", user.username);
                 }
             }
         }
@@ -152,17 +152,17 @@ fn handle_users_action(action: &UsersAction) -> Result<()> {
             let mut users = Users::load()?;
             users.users.clear();
             users.save()?;
-            info!("all users cleared.");
+            println!("all users cleared.");
         }
         UsersAction::Token { username } => {
             let users = Users::load()?;
             match users.find(username) {
                 Some(user) => {
-                    info!("telegram token for '{username}': {}", user.telegram_token);
+                    println!("telegram token for '{username}': {}", user.telegram_token);
                     if user.telegram_chat_id.is_some() {
-                        info!("(telegram already linked)");
+                        println!("(telegram already linked)");
                     } else {
-                        info!("(telegram not yet linked)");
+                        println!("(telegram not yet linked)");
                     }
                 }
                 None => return Err(Error::Config(format!("User '{username}' not found"))),

@@ -1,27 +1,26 @@
 # 🖥️ Knightwatch
 
-A lightweight, real-time browser-based dashboard for monitoring system performance, live screenshots and process activity on a remote or local machine.
+A lightweight, real-time browser-based dashboard for monitoring system performance, live screenshots, and process activity on a remote or local machine.
 
 ---
 
 ## Overview
 
-Knightwatch provides a sleek dark-mode web interface that streams system performance, live screen captures and process telemetry directly in your browser. The backend is a Rust server built on [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum), keeping the footprint small and performance high — no heavy agents or desktop apps required. It's designed for quick visual oversight of a running system, whether you're monitoring a headless server, a build machine, or a long-running automation task.
+Knightwatch provides a sleek dark-mode web interface that streams system performance, live screen captures, and process telemetry directly in your browser. The backend is a Rust server built on [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum), keeping the footprint small and performance high — no heavy agents or desktop apps required.
 
 ---
 
 ## Features
 
-- **Live Screenshots** — Displays one or more connected screens, refreshed every 2 seconds via `/screenshot`
+- **Live Screenshots** — Displays one or more connected screens, refreshed every 2 seconds
 - **Process Monitor** — Tracks a root process and its children with real-time CPU, memory, and state indicators
 - **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
 - **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
-- **Linux Extended Telemetry** — On Linux, child process snapshots include working directory, command line, open file descriptors, and I/O stats
+- **Linux Extended Telemetry** — Child process snapshots include working directory, command line, open file descriptors, and I/O stats
 - **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
 - **Systemd Monitor** — Live systemd unit tracking with active/failed/inactive counts, per-unit state, resource usage, and change events (Linux only)
-- **Telegram Bot** — Optional bot for remote monitoring and push notifications on process and system events
+- **Telegram Bot** — Optional bot for remote monitoring and push notifications
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
-- **Structured Logging** — Tracing via `tracing-subscriber` with configurable log levels via `RUST_LOG`
 
 ---
 
@@ -47,7 +46,7 @@ brew install YofaGh/tap/knightwatch
 
 ### Pre-built Binaries
 
-Standalone binaries for all supported platforms are available on the [Releases page](https://github.com/YofaGh/knightwatch/releases/latest). Download the archive for your platform, extract it, and place the binary somewhere on your `PATH`.
+Standalone binaries for all supported platforms are available on the [Releases page](https://github.com/YofaGh/knightwatch/releases/latest).
 
 ### Updating
 
@@ -59,330 +58,55 @@ knightwatch-update
 
 ---
 
-## How It Works
-
-The Rust backend exposes a small HTTP API (served by Axum) that the frontend polls every 2 seconds:
-
-| Endpoint | Method | Description |
-| --- | --- | --- |
-| `GET /` | GET | Serves the self-contained `view.html` dashboard |
-| `GET /health` | GET | Returns server status, version, and uptime |
-| `GET /config` | GET | Returns server config |
-| `GET /screenshot` | GET | Returns a JSON array of base64-encoded PNG screen captures |
-| `GET /root_pids` | GET | Returns a list of pids being tracked |
-| `GET /process/<PID>` | GET | Returns root process info, child processes, CPU/memory stats, and `work_done` flag |
-| `GET /process/root/<PID>` | GET | Returns only the root process snapshot, or 404 if it has exited |
-| `GET /process/children/<PID>` | GET | Returns snapshots of all currently live child processes |
-| `GET /process/status/<PID>` | GET | Lightweight summary — root alive/dead, child count, and `work_done` flag |
-| `GET /top-processes` | GET | Returns the top N processes sorted by the given key |
-| `GET /system` | GET | Returns the full system snapshot (CPU, memory, disks, network, battery, thermals, health) |
-| `GET /cpu` | GET | Returns the current CPU snapshot only |
-| `GET /memory` | GET | Returns the current memory snapshot only |
-| `GET /disks` | GET | Returns per-disk snapshots |
-| `GET /networks` | GET | Returns per-network-interface snapshots |
-| `GET /gpus` | GET | Returns GPU snapshots (empty if no supported GPU detected) |
-| `GET /battery` | GET | Returns the battery snapshot, or 404 if no battery present |
-| `GET /host-info` | GET | Returns static host information (hostname, OS, kernel, arch, uptime) |
-| `GET /temperatures` | GET | Returns thermal sensor readings |
-| `GET /systemd` | GET | Returns the full systemd snapshot (units, counts) — Linux only |
-| `GET /unit/<unit_name>` | GET | Returns a snapshot for a specific unit by name, or 404 if not found |
-| `GET /units/<unit_state>` | GET | Returns all units matching the given active state |
-| `GET /failed_units` | GET | Returns all units currently in a failed state |
-| `POST /shutdown` | POST | Gracefully shuts down the server |
-
-### Expected Response Shapes
-
-**`/screenshot`**
-
-```json
-{
-  "screens": [
-    {
-      "mime": "image/png",
-      "data": "<base64>",
-      "monitor_name": "Built-in Display",
-      "monitor_id": 0,
-      "width": 1920,
-      "height": 1080,
-      "timestamp": "2025-01-01T00:00:00Z"
-    }
-  ],
-  "count": 1
-}
-```
-
-**`/root_pids`**
-
-```json
-[123, 12345]
-```
-
-**`/process/1234`**
-
-```json
-{
-  "work_done": false,
-  "root": {
-    "name": "my-app",
-    "pid": 1234,
-    "state": "running",
-    "cpu_usage": 12.5,
-    "memory_human": "128 MB"
-  },
-  "child_count": 2,
-  "children": [...],
-  "timestamp": "2025-01-01T00:00:00Z"
-}
-```
-
-**`/process/root/1234`**
-
-Returns a single `ProcessInfo` object, or `404` if the root process has exited.
-
-**`/process/status/1234`**
-
-```json
-{
-  "root_alive": true,
-  "root_pid": 1234,
-  "root_name": "my-app",
-  "child_count": 2,
-  "work_done": false,
-  "timestamp": "2025-01-01T00:00:00Z"
-}
-```
-
-**`/health`**
-
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-01-01T00:00:00Z",
-  "version": "0.1.0",
-  "uptime": "3600s"
-}
-```
-
-**`/config`**
-
-```json
-{
-  "blind": false,
-  "pid": [],
-  "top_processes": false,
-  "limit_processes": 5,
-  "telegram_bot": false,
-  "system_resources": false
-}
-```
-
-**`/top-processes?sort=cpu&limit=1`**
-
-```json
-[
-  {
-    "name": "my-app",
-    "pid": 1234,
-    "state": "running",
-    "cpu_usage": 12.5,
-    "memory_human": "128 MB"
-  }
-]
-```
-
-Process `state` can be `running`, `sleeping`, `gone`, or any other string (rendered as a warning-colored pill).
-
-**`/system`**
-
-```json
-{
-  "timestamp": "2025-01-01T00:00:00Z",
-  "health": "healthy",
-  "cpu": {
-    "usage_percent": 14.2,
-    "brand": "Intel(R) Core(TM) i9-13900K",
-    "frequency_mhz": 3200,
-    "physical_core_count": 24,
-    "cores": [{ "name": "cpu0", "usage_percent": 12.1, "frequency_mhz": 3200 }],
-    "load_avg": { "one": 0.45, "five": 0.60, "fifteen": 0.72 }
-  },
-  "memory": {
-    "total_bytes": 34359738368,
-    "used_bytes": 12884901888,
-    "available_bytes": 21474836480,
-    "free_bytes": 18253611008,
-    "used_percent": 37.5,
-    "swap_total_bytes": 4294967296,
-    "swap_used_bytes": 0,
-    "swap_free_bytes": 4294967296,
-    "swap_used_percent": 0.0
-  },
-  "disks": [
-    {
-      "name": "/dev/sda1",
-      "mount_point": "/",
-      "file_system": "ext4",
-      "kind": "Ssd",
-      "is_removable": false,
-      "total_bytes": 500107862016,
-      "used_bytes": 120259084288,
-      "available_bytes": 379848777728,
-      "used_percent": 24.0
-    }
-  ],
-  "networks": [
-    {
-      "interface": "eth0",
-      "rx_bytes_per_sec": 2048,
-      "tx_bytes_per_sec": 512,
-      "rx_total_bytes": 1073741824,
-      "tx_total_bytes": 536870912,
-      "rx_packets_per_sec": 4,
-      "tx_packets_per_sec": 2,
-      "rx_errors": 0,
-      "tx_errors": 0
-    }
-  ],
-  "gpus": [],
-  "battery": null,
-  "temperatures": [
-    {
-      "label": "coretemp Package id 0",
-      "temperature_celsius": 52.0,
-      "temperature_max_celsius": 71.0,
-      "temperature_critical_celsius": 100.0
-    }
-  ],
-  "host": {
-    "hostname": "my-machine",
-    "os_name": "Ubuntu 24.04.1 LTS",
-    "kernel_version": "6.8.0-40-generic",
-    "cpu_arch": "x86_64",
-    "uptime_secs": 86400,
-    "process_count": 312
-  }
-}
-```
-
-`health` can be `healthy`, `warning`, or `critical`. Individual sub-endpoints (`/cpu`, `/memory`, `/disks`, `/networks`, `/gpus`, `/battery`, `/host-info`, `/temperatures`) return their respective nested objects directly.
-
-- **Note: on windows, temepatures api requires you to run the app as administrator**
-
-**`/systemd`**
-
-> **Linux only.** Returns `404` on non-Linux platforms.
-
-```json
-{
-  "timestamp": "2025-01-01T00:00:00Z",
-  "units": [
-    {
-      "unit_name": "nginx.service",
-      "unit_type": "service",
-      "load_state": "loaded",
-      "active_state": "active",
-      "sub_state": "running",
-      "description": "A high performance web server and a reverse proxy server",
-      "main_pid": 1234,
-      "memory_bytes": 10485760,
-      "cpu_usage_ns": 500000000,
-      "restart_count": 0,
-      "since": "2025-01-01T00:00:00Z",
-      "fragment_path": "/lib/systemd/system/nginx.service"
-    }
-  ],
-  "failed_count": 0,
-  "active_count": 42,
-  "inactive_count": 10
-}
-```
-
-**`/unit/<unit_name>`**
-
-Returns a single `UnitSnapshot` object (same shape as array elements above), or `404` if the unit is not found.
-
-**`/units/<unit_state>`**
-
-Returns an array of `UnitSnapshot` objects matching the given `active_state`. Valid states: `active`, `reloading`, `inactive`, `failed`, `activating`, `deactivating`.
-
-**`/failed_units`**
-
-Returns an array of `UnitSnapshot` objects whose `active_state` is `failed`.
-
-`unit_type` can be `service`, `socket`, `target`, `timer`, `mount`, `device`, or `other`. `load_state` can be `loaded`, `not_found`, `bad_setting`, `error`, or `masked`.
-
----
-
 ## Getting Started
 
-### Running
+The server starts on `0.0.0.0:8083` by default and serves the dashboard at `http://localhost:8083`.
+All tracking flags are optional — enable only what you need:
 
 ```bash
-knightwatch --pid <PID> --pid <PID>
-```
+# Track one or more processes
+knightwatch --pid <PID>
 
-Pass the PID of the root process you want to monitor. The server will start on `0.0.0.0:8083` by default.
+# Monitor system resources (CPU, memory, disks, network, battery, thermals)
+knightwatch --system-resources
 
-### CLI Arguments
+# Track systemd units (Linux only)
+knightwatch --systemd
 
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--pid <PID>` | — | PID of the root process to track (repeatable) |
-| `--host <HOST>` | `0.0.0.0` | Host address for the API server |
-| `--port <PORT>` / `-p` | `8083` | Port for the API server |
-| `--enable-auth` | `false` | Enable authentication for the API server |
-| `--no-api` | `false` | Disable the API server entirely |
-| `--no-dashboard` | `false` | Disable the web dashboard |
-| `--blind` | `false` | Disable the Screen Capture API (useful on platforms where it requires elevated permissions) |
-| `--system-resources` | `false` | Enable the system resources (CPU, memory, disks, network, battery, thermals) |
-| `--systemd` | `false` | Enable the systemd monitor (Linux only; shows a warning on other platforms) |
-| `--telegram` | `false` | Enable the Telegram bot |
-| `--with-webhook` | `false` | Enable webhook dispatching |
-| `--webhook <URL>` | — | Webhook URL to POST process events to (repeatable) |
-| `--top-processes` | `false` | Enable top processes tracker |
-| `--limit-processes <NUMBER>` | `5` | Limit number of top processes to track (default is 5) |
+# Track top processes by CPU/memory
+knightwatch --top-processes
 
-To run without the API server:
+# Combine any of the above
+knightwatch --pid <PID> --system-resources --systemd
 
-```bash
-knightwatch --pid <PID> --no-api
-```
+# Enable Telegram notifications
+knightwatch --pid <PID> --telegram
 
-To run without the web dashboard:
+# Enable webhook dispatching
+knightwatch --pid <PID> --with-webhook --webhook https://example.com/hook
 
-```bash
-knightwatch --pid <PID> --no-dashboard
-```
-
-To run without screen capture (e.g. on a headless server or where permissions are restricted):
-
-```bash
+# Run headless (no screen capture)
 knightwatch --pid <PID> --blind
 ```
 
-To enable the system resources:
+### CLI Flags
 
-```bash
-knightwatch --pid <PID> --system-resources
-```
-
-To enable the systemd monitor (Linux only):
-
-```bash
-knightwatch --pid <PID> --systemd
-```
-
-To enable webhook dispatching with one or more targets:
-
-```bash
-knightwatch --pid <PID> --with-webhook --webhook https://example.com/hook
-```
-
-To enable tracking top processes with a limit:
-
-```bash
-knightwatch --top-processes --limit-processes 10
-```
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--pid <PID>` | — | PID of a process to track (repeatable, optional) |
+| `--host <HOST>` | `0.0.0.0` | Host address for the API server |
+| `--port <PORT>` / `-p` | `8083` | Port for the API server |
+| `--enable-auth` | `false` | Enable authentication |
+| `--no-api` | `false` | Disable the API server entirely |
+| `--no-dashboard` | `false` | Disable the web dashboard |
+| `--blind` | `false` | Disable screen capture |
+| `--system-resources` | `false` | Enable CPU, memory, disk, network, battery, and thermal monitoring |
+| `--systemd` | `false` | Enable systemd monitor (Linux only) |
+| `--telegram` | `false` | Enable the Telegram bot |
+| `--with-webhook` | `false` | Enable webhook dispatching |
+| `--webhook <URL>` | — | Webhook target URL (repeatable) |
+| `--top-processes` | `false` | Enable top processes tracker |
+| `--limit-processes <N>` | `5` | Number of top processes to track |
 
 ### Log Level
 
@@ -394,246 +118,19 @@ RUST_LOG=debug knightwatch --pid <PID>
 
 ---
 
-## System resources Monitor
+## Documentation
 
-When enabled with `--system-resources`, Knightwatch polls hardware metrics every second and exposes them via the `/system` family of endpoints. It also emits threshold-based events to the Telegram bot and webhook dispatcher.
+Full reference documentation is available in the [Wiki](https://github.com/YofaGh/knightwatch/wiki):
 
-### Default Thresholds
-
-| Metric | Warning threshold |
-| --- | --- |
-| CPU usage | ≥ 90% |
-| Memory usage | ≥ 90% |
-| Disk usage (per mount) | ≥ 90% |
-| Battery charge | ≤ 15% (discharging only) |
-
-## Systemd Monitor
-
-> **Linux only.** On any other OS, passing `--systemd` prints a warning and the flag is ignored.
-
-When enabled with `--systemd`, Knightwatch polls systemd over D-Bus every second and exposes unit state via the `/systemd` family of endpoints. It also emits unit change events to the Telegram bot and webhook dispatcher.
-
-```bash
-knightwatch --pid <PID> --systemd
-```
-
-### Endpoints
-
-| Endpoint | Description |
-| --- | --- |
-| `GET /systemd` | Full snapshot — all units with counts |
-| `GET /unit/<unit_name>` | Single unit by name (e.g. `nginx.service`), or 404 |
-| `GET /units/<unit_state>` | All units matching an active state (`active`, `failed`, etc.) |
-| `GET /failed_units` | Shorthand for all units in the `failed` state |
-
-### Webhook Events
-
-When webhooks are also enabled, systemd emits the following events:
-
-| Event | Description | Key `data` fields |
-| --- | --- | --- |
-| `systemd.initial_snapshot` | First unit snapshot after startup | `timestamp`, `unit_count`, `failed_count`, `active_count`, `inactive_count` |
-| `systemd.tick` | Periodic unit snapshot | `timestamp`, `unit_count`, `failed_count`, `active_count`, `inactive_count` |
-| `systemd.unit_failed` | A unit transitioned to `failed` | `unit_name`, `previous_state` |
-| `systemd.unit_recovered` | A previously failed unit recovered | `unit_name` |
-| `systemd.unit_appeared` | A new unit became visible | `unit_name`, `active_state`, `sub_state`, `description` |
-| `systemd.unit_disappeared` | A unit is no longer present | `unit_name` |
-
-### Telegram Notifications
-
-When both `--systemd` and `--telegram` are enabled, the bot sends alerts for:
-
-- 🔴 **Unit failed** — a unit transitioned to `failed`
-- 🟢 **Unit recovered** — a previously failed unit is active again
-- 🆕 **Unit appeared** — a new unit became visible to systemd
-- 💨 **Unit disappeared** — a tracked unit is no longer present
+- [API Reference](https://github.com/YofaGh/knightwatch/wiki/API-Reference) — All endpoints and response shapes
+- [System Resources Monitor](https://github.com/YofaGh/knightwatch/wiki/System-Resources-Monitor) — Hardware telemetry and thresholds
+- [Systemd Monitor](https://github.com/YofaGh/knightwatch/wiki/Systemd-Monitor) — Unit tracking and events (Linux only)
+- [Telegram Bot](https://github.com/YofaGh/knightwatch/wiki/Telegram-Bot) — Setup, commands, and notifications
+- [Webhooks](https://github.com/YofaGh/knightwatch/wiki/Webhooks) — Payload format and event catalogue
+- [Authentication](https://github.com/YofaGh/knightwatch/wiki/Authentication) — User management and API auth
+- [Persistent Configuration](https://github.com/YofaGh/knightwatch/wiki/Persistent-Configuration) — Stored settings via `config` subcommand
 
 ---
-
-## Telegram Bot
-
-Knightwatch includes a Telegram bot for remote monitoring and alerting without opening the web dashboard.
-
-### Setup
-
-Store your bot token in persistent config:
-
-```bash
-knightwatch config set telegram-token <YOUR_BOT_TOKEN>
-```
-
-Clear it if needed:
-
-```bash
-knightwatch config set telegram-token --clear
-```
-
-Verify it was saved:
-
-```bash
-knightwatch config get telegram-token
-```
-
-### Enabling
-
-Pass the `--telegram` flag at runtime:
-
-```bash
-knightwatch --pid <PID> --telegram
-```
-
-### Capabilities
-
-The bot sends push notifications for all process events when tracking at least one process:
-
-- 🟢 **Initial snapshot** — root and children when tracking begins
-- 🆕 **Children appeared** — new child processes detected
-- 🔴 **Children exited** — specific child PIDs exited
-- ✅ **All children gone** — all child processes have exited
-- 💀 **Root process exited** — the root process itself has stopped
-
-When `--system-resources` is also enabled, the bot additionally sends alerts for:
-
-- ⚠️ **CPU threshold exceeded** — aggregate CPU usage above 90%
-- ⚠️ **Memory threshold exceeded** — memory usage above 90%
-- ⚠️ **Disk threshold exceeded** — a mount point usage above 90%
-- 🔋 **Battery low** — charge below 15% while discharging
-- 🔌 **Battery state changed** — plugged in, unplugged, or full
-
----
-
-## Webhooks
-
-Knightwatch can POST process and system events to one or more HTTP endpoints. Useful for integrating with external orchestration, alerting, or logging pipelines.
-
-### Usage
-
-Enable webhooks with `--with-webhook` and provide one or more targets via `--webhook`:
-
-```bash
-knightwatch --pid <PID> --with-webhook --webhook https://example.com/hook --webhook https://other.com/hook
-```
-
-Webhook URLs can also be stored in persistent config (merged with any provided via `--webhook` at runtime, deduplicated). See [Persistent Configuration](#persistent-configuration) below.
-
-### Payload Format
-
-```json
-{
-  "version": "1.0.0",
-  "event": "process.children_exited",
-  "timestamp": "2025-01-01T00:00:00Z",
-  "data": {
-    "pids": [5678, 5679]
-  }
-}
-```
-
-**Process event names:**
-
-| Event | Description |
-| --- | --- |
-| `process.initial_snapshot` | First capture after startup |
-| `process.children_appeared` | New child processes detected |
-| `process.children_exited` | One or more children exited |
-| `process.all_children_gone` | All children have exited |
-| `process.root_exited` | Root process exited |
-| `process.work_complete` | Work-done condition met |
-
-**System resources event names** (requires `--system-resources`):
-
-| Event | Description | Key `data` fields |
-| --- | --- | --- |
-| `resources.initial_snapshot` | First hardware snapshot | `snapshot` |
-| `resources.tick` | Periodic hardware snapshot | `snapshot` |
-| `resources.cpu_threshold_exceeded` | CPU crossed warning threshold | `usage_percent`, `threshold` |
-| `resources.memory_threshold_exceeded` | Memory crossed warning threshold | `usage_percent`, `threshold` |
-| `resources.disk_threshold_exceeded` | Disk crossed warning threshold | `mount_point`, `usage_percent`, `threshold` |
-| `resources.battery_low` | Battery charge below threshold | `charge_percent`, `threshold` |
-| `resources.battery_state_changed` | Battery state changed | `state` |
-
-Failed deliveries are retried up to 3 times with exponential backoff.
-
----
-
-## Authentication
-
-When `--enable-auth` is passed, the API server requires authentication. Users are managed via the `users` subcommand and stored in a persistent `users.json` file in the application data directory.
-
-Each user has a username, a bcrypt-hashed password, and a Telegram token that can be used to link their Telegram account.
-
-### Managing Users
-
-**Add a user** (you will be prompted for a password):
-
-```bash
-knightwatch users add <USERNAME>
-```
-
-On success, the command prints the new user's Telegram token — save it if you plan to link Telegram.
-
-**Remove a user:**
-
-```bash
-knightwatch users remove <USERNAME>
-```
-
-**List all users** (shows Telegram link status):
-
-```bash
-knightwatch users list
-```
-
-**Show the Telegram token for a user:**
-
-```bash
-knightwatch users token <USERNAME>
-```
-
-This also indicates whether the user has already linked their Telegram account.
-
-**Remove all users:**
-
-```bash
-knightwatch users clear
-```
-
----
-
-## Persistent Configuration
-
-Knightwatch stores settings such as the Telegram token and webhook URLs in a persistent config file, managed via the `config` subcommand. Persisted webhook URLs are merged with any `--webhook` flags provided at runtime and deduplicated.
-
-The `config` subcommand uses `get` and `set` actions with the following fields:
-
-### `telegram-token`
-
-```bash
-# Set the token
-knightwatch config set telegram-token <TOKEN>
-
-# Clear the token
-knightwatch config set telegram-token --clear
-
-# Read the current value
-knightwatch config get telegram-token
-```
-
-### `webhook-urls`
-
-```bash
-# Add one or more URLs
-knightwatch config set webhook-urls --add https://example.com/hook --add https://other.com/hook
-
-# Remove a specific URL
-knightwatch config set webhook-urls --remove https://example.com/hook
-
-# Clear all stored URLs
-knightwatch config set webhook-urls --clear
-
-# List all stored URLs
-knightwatch config get webhook-urls
-```
 
 ## License
 

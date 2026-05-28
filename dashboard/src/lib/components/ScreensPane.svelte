@@ -11,6 +11,12 @@
 
   /** @type {Array<{monitor_id: string|number, monitor_name: string, width: number, height: number, timestamp: string, mime: string, data: string}>} */
   let screens = $state([]);
+  let selectedIndex = $state(null);
+  let selectedScreen = $derived(
+    selectedIndex !== null && screens[selectedIndex]
+      ? screens[selectedIndex]
+      : null,
+  );
 
   async function refresh() {
     const start = Date.now();
@@ -41,9 +47,17 @@
   <div class="pane-header">
     <h2>Monitored Screens</h2>
   </div>
-  <div id="screens">
+  <div id="screens" class:single={screens.length === 1}>
     {#each screens as screen, i (screen.monitor_id ?? i)}
-      <div class="screen-container">
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="screen-container"
+        class:clickable={screens.length > 1}
+        onclick={() => {
+          if (screens.length > 1) selectedIndex = i;
+        }}
+      >
         <div class="screen-label-row">
           <span class="screen-label screen-name"
             >{screen.monitor_name || `Display ${i + 1}`}</span
@@ -64,6 +78,36 @@
       </div>
     {/each}
   </div>
+
+  {#if selectedScreen}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="lightbox" onclick={() => (selectedIndex = null)}>
+      <div class="lightbox-content" onclick={(e) => e.stopPropagation()}>
+        <div class="screen-label-row lightbox-header">
+          <span class="screen-label screen-name"
+            >{selectedScreen.monitor_name ||
+              `Display ${selectedIndex + 1}`}</span
+          >
+          {#if selectedScreen.width && selectedScreen.height}
+            <span class="screen-meta screen-dims"
+              >{selectedScreen.width}×{selectedScreen.height}</span
+            >
+          {/if}
+          <span class="screen-meta screen-ts"
+            >{fmtTimestamp(selectedScreen.timestamp)}</span
+          >
+          <button class="close-btn" onclick={() => (selectedIndex = null)}
+            >✕</button
+          >
+        </div>
+        <img
+          src={`data:${selectedScreen.mime};base64,${selectedScreen.data}`}
+          alt={selectedScreen.monitor_name || `Display ${selectedIndex + 1}`}
+        />
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -97,6 +141,9 @@
     flex: 1;
     align-content: start;
   }
+  #screens.single {
+    grid-template-columns: 1fr;
+  }
   @media (max-width: 768px) {
     #screens {
       grid-template-columns: 1fr;
@@ -122,6 +169,9 @@
   .screen-container:hover {
     transform: translateY(-2px);
     border-color: var(--accent);
+  }
+  .screen-container.clickable {
+    cursor: zoom-in;
   }
   .screen-label {
     font-size: 0.7rem;
@@ -150,5 +200,56 @@
     color: var(--text-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
       monospace;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  .lightbox-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 0.85rem;
+    padding: 0.6rem;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .lightbox-header {
+    justify-content: flex-start;
+  }
+  .lightbox-content img {
+    max-width: 100%;
+    max-height: calc(90vh - 4rem);
+    object-fit: contain;
+    border-radius: 0.6rem;
+    background: #000;
+  }
+  .close-btn {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.2rem 0.5rem;
+  }
+  .close-btn:hover {
+    color: #fff;
   }
 </style>

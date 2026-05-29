@@ -1,6 +1,10 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{enums::ProcessTrackerQuery, structs::ProcessSnapshot};
+use super::{
+    enums::{ProcessTrackerCommand, ProcessTrackerQuery},
+    structs::ProcessSnapshot,
+};
+use crate::prelude::*;
 
 /// Subscribe to tracker events (e.g. from a Telegram bot or WebSocket handler).
 /// Returns `None` if the tracker was not started (no `--pid` given).
@@ -13,6 +17,14 @@ pub fn subscribe_events() -> Option<broadcast::Receiver<super::enums::ProcessTra
 fn get_process_tracker_query_sender() -> Option<&'static mpsc::Sender<ProcessTrackerQuery>> {
     super::tracker::PROCESS_TRACKER_QUERY_SENDER.get()
 }
+
+fn get_process_tracker_command_sender() -> Option<&'static mpsc::Sender<ProcessTrackerCommand>> {
+    super::tracker::PROCESS_TRACKER_COMMAND_SENDER.get()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read-only queries
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Get the root process ids being tracked.
 pub async fn get_root_pids() -> Vec<u32> {
@@ -84,4 +96,101 @@ pub async fn get_top_processes(by: super::enums::SortKey, limit: usize) -> Vec<P
         })
         .await;
     rx.await.unwrap_or_default()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mutating commands
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Send a signal to a single process.
+///
+/// Returns `Ok(true)` on success, `Ok(false)` if the OS rejected the signal,
+/// or `Err` if the PID was not found in the process list.
+pub async fn kill_process(pid: u32, signal: super::ProcessSignal) -> Result<bool> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::KillProcess {
+            pid,
+            signal,
+            response: tx,
+        })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Kill a root process and every process in its descendant subtree (SIGKILL).
+///
+/// Returns the list of PIDs that were successfully signalled.
+pub async fn kill_tree(root_pid: u32) -> Result<Vec<u32>> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::KillTree {
+            root_pid,
+            response: tx,
+        })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Begin tracking a new root PID. A no-op if already tracked.
+pub async fn track_pid(pid: u32) -> Result<()> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::TrackPid { pid, response: tx })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Stop tracking a root PID and discard its accumulated state.
+pub async fn untrack_pid(pid: u32) -> Result<()> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::UntrackPid { pid, response: tx })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Change the polling interval and restart the tick timer immediately.
+pub async fn set_poll_interval(interval: std::time::Duration) -> Result<()> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::SetPollInterval {
+            interval,
+            response: tx,
+        })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Pause polling. The tracker continues to handle queries and commands,
+/// but `handle_tick` will not fire until `resume_poll` is called.
+pub async fn pause_poll() -> Result<()> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::PausePoll { response: tx })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
+}
+
+/// Resume polling at the current poll interval.
+pub async fn resume_poll() -> Result<()> {
+    let tx_ref =
+        get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerCommand::ResumePoll { response: tx })
+        .await;
+    rx.await.map_err(Error::channel_closed)?
 }

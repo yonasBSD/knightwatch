@@ -14,11 +14,14 @@ use crate::prelude::*;
 impl ProcessTrackerChannels {
     pub fn new() -> Self {
         let (query_tx, query_rx) = mpsc::channel(1024);
+        let (command_tx, command_rx) = mpsc::channel(256);
         // capacity 64: events are cheap and subscribers should keep up
         let (event_tx, _) = broadcast::channel(64);
         Self {
             query_tx,
             query_rx: Some(query_rx),
+            command_tx,
+            command_rx: Some(command_rx),
             event_tx,
         }
     }
@@ -27,6 +30,12 @@ impl ProcessTrackerChannels {
         self.query_rx
             .take()
             .ok_or_else(|| Error::ProcessTracker("Query receiver already taken".into()))
+    }
+
+    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<ProcessTrackerCommand>> {
+        self.command_rx
+            .take()
+            .ok_or_else(|| Error::ProcessTracker("Command receiver already taken".into()))
     }
 }
 
@@ -98,11 +107,18 @@ impl ProcessTracker {
             .channels
             .take_query_rx()
             .expect("Failed to take query receiver");
+        let mut command_rx = self
+            .channels
+            .take_command_rx()
+            .expect("Failed to take command receiver");
         self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
         loop {
             tokio::select! {
                 Some(query) = query_rx.recv() => {
                     self.handle_query(query);
+                }
+                Some(command) = command_rx.recv() => {
+                    self.handle_command(command);
                 }
                 _ = async { self.poll_interval_timer.as_mut().unwrap().tick().await }, if self.poll_interval_timer.is_some() => {
                     self.handle_tick().await;
@@ -169,6 +185,119 @@ impl ProcessTracker {
                         .collect(),
                 };
                 let _ = response.send(result);
+            }
+        }
+    }
+
+    fn handle_command(&mut self, command: ProcessTrackerCommand) {
+        match command {
+            // ----------------------------------------------------------------
+            // Kill a single process with the given signal.
+            // ----------------------------------------------------------------
+            ProcessTrackerCommand::KillProcess {
+                pid,
+                signal,
+                response,
+            } => {
+                let Some(sysinfo_signal) = signal.to_sysinfo_signal() else {
+                    let _ = response.send(Err(Error::unsupported_signal(signal)));
+                    return;
+                };
+                let target = [Pid::from_u32(pid)];
+                self.sys.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&target),
+                    false,
+                    ProcessRefreshKind::nothing(),
+                );
+                let result = match self.sys.process(Pid::from_u32(pid)) {
+                    Some(process) => {
+                        let success = process.kill_with(sysinfo_signal).unwrap_or(false);
+                        self.emit_event(ProcessTrackerEvent::ProcessKilled { pid, success });
+                        if success {
+                            info!(pid, signal = ?signal, "sent signal to process");
+                        } else {
+                            warn!(pid, signal = ?signal, "signal sent but OS reported failure");
+                        }
+                        Ok(success)
+                    }
+                    None => {
+                        warn!(pid, "kill_process: process not found");
+                        Err(Error::ProcessTracker(format!("Process {pid} not found")))
+                    }
+                };
+                let _ = response.send(result);
+            }
+            // ----------------------------------------------------------------
+            // Kill a root process and its entire descendant subtree.
+            // ----------------------------------------------------------------
+            ProcessTrackerCommand::KillTree { root_pid, response } => {
+                // Refresh the full tree so collect_descendants sees current state.
+                self.sys.refresh_processes_specifics(
+                    ProcessesToUpdate::All,
+                    true,
+                    ProcessRefreshKind::nothing(),
+                );
+                let descendants = self.collect_descendants(root_pid);
+                let mut killed = Vec::new();
+                // Kill leaves first, then work up to the root.
+                for snap in &descendants {
+                    if let Some(proc) = self.sys.process(Pid::from_u32(snap.pid))
+                        && proc.kill()
+                    {
+                        info!(pid = snap.pid, root_pid, "killed descendant process");
+                        killed.push(snap.pid);
+                        self.emit_event(ProcessTrackerEvent::ProcessKilled {
+                            pid: snap.pid,
+                            success: true,
+                        });
+                    }
+                }
+                if let Some(proc) = self.sys.process(Pid::from_u32(root_pid))
+                    && proc.kill()
+                {
+                    info!(pid = root_pid, "killed root process");
+                    killed.push(root_pid);
+                    self.emit_event(ProcessTrackerEvent::ProcessKilled {
+                        pid: root_pid,
+                        success: true,
+                    });
+                }
+                let _ = response.send(Ok(killed));
+            }
+            // ----------------------------------------------------------------
+            // Dynamically add / remove tracked root PIDs.
+            // ----------------------------------------------------------------
+            ProcessTrackerCommand::TrackPid { pid, response } => {
+                self.state
+                    .root_processes
+                    .entry(pid)
+                    .or_insert_with(|| RootProcess::new(pid));
+                info!(pid, "now tracking pid");
+                let _ = response.send(Ok(()));
+            }
+            ProcessTrackerCommand::UntrackPid { pid, response } => {
+                self.state.root_processes.remove(&pid);
+                info!(pid, "stopped tracking pid");
+                let _ = response.send(Ok(()));
+            }
+            // ----------------------------------------------------------------
+            // Polling control.
+            // ----------------------------------------------------------------
+            ProcessTrackerCommand::SetPollInterval { interval, response } => {
+                self.poll_interval = interval;
+                self.poll_interval_timer = Some(tokio::time::interval(interval));
+                info!(ms = interval.as_millis(), "poll interval updated");
+                let _ = response.send(Ok(()));
+            }
+            ProcessTrackerCommand::PausePoll { response } => {
+                self.poll_interval_timer = None;
+                info!("polling paused");
+                let _ = response.send(Ok(()));
+            }
+            ProcessTrackerCommand::ResumePoll { response } => {
+                self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
+                info!("polling resumed");
+                let _ = response.send(Ok(()));
             }
         }
     }
@@ -393,10 +522,15 @@ pub static PROCESS_TRACKER_QUERY_SENDER: OnceLock<mpsc::Sender<ProcessTrackerQue
     OnceLock::new();
 pub static PROCESS_TRACKER_EVENT_SENDER: OnceLock<broadcast::Sender<ProcessTrackerEvent>> =
     OnceLock::new();
+pub static PROCESS_TRACKER_COMMAND_SENDER: OnceLock<mpsc::Sender<ProcessTrackerCommand>> =
+    OnceLock::new();
 
 pub fn init_process_tracker() {
     let config = get_config();
-    if config.args.pid.is_empty() && !config.args.top_processes {
+    if config.args.pid.is_empty()
+        && !config.args.top_processes
+        && !config.args.allow_process_commands
+    {
         return;
     }
     let process_tracker = ProcessTracker::new(config.args.pid.clone());
@@ -406,6 +540,11 @@ pub fn init_process_tracker() {
     PROCESS_TRACKER_EVENT_SENDER
         .set(process_tracker.channels.event_tx.clone())
         .unwrap();
+    if config.args.allow_process_commands {
+        PROCESS_TRACKER_COMMAND_SENDER
+            .set(process_tracker.channels.command_tx.clone())
+            .unwrap();
+    }
     tokio::spawn(async move {
         if let Err(e) = process_tracker.start_tracking_loop().await {
             error!(?e, "process tracker loop exited with error");

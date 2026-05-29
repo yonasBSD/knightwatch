@@ -59,6 +59,13 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
         ProcessTrackerEvent::WorkComplete { pid } => {
             format!("✅ *Work Complete*\nPID: `{pid}`")
         }
+        ProcessTrackerEvent::ProcessKilled { pid, success } => {
+            if *success {
+                format!("✅ *Successfully killed process*\nPID: `{pid}`")
+            } else {
+                format!("✅ *Failed to killed process*\nPID: `{pid}`")
+            }
+        },
     }
 }
 

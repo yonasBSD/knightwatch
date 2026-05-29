@@ -65,6 +65,10 @@ pub struct CliArgs {
     /// Enable systemd
     #[arg(long, default_value_t = false)]
     pub systemd: bool,
+
+    /// Allow process commands (kill, track, etc.) via the API
+    #[arg(long, default_value_t = false)]
+    pub allow_process_commands: bool,
 }
 
 #[derive(Subcommand, Debug)]

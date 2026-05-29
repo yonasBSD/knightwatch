@@ -4,6 +4,7 @@ use teloxide::errors::RequestError;
 #[derive(Debug)]
 pub enum Error {
     Network(String),
+    ChannelClosed(String),
     Screen(String),
     Config(String),
     ProcessTracker(String),
@@ -18,6 +19,19 @@ impl Error {
     pub fn bind_address(address: &str, err: IoError) -> Self {
         Self::Network(format!("Failed to bind address: {address}, {err}"))
     }
+    pub fn channel_closed(err: tokio::sync::oneshot::error::RecvError) -> Self {
+        Self::ChannelClosed(format!("Channel was closed: {err}"))
+    }
+    pub fn unsupported_signal(signal: crate::process_tracker::ProcessSignal) -> Self {
+        Self::ProcessTracker(format!(
+            "Signal '{signal:?}' is not supported on this platform"
+        ))
+    }
+    pub fn process_commands_disabled() -> Self {
+        Self::ProcessTracker(
+            "Process commands are disabled — rerun with --allow-process-commands".into(),
+        )
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -27,11 +41,12 @@ impl std::fmt::Display for Error {
             | Error::Screen(msg)
             | Error::Config(msg)
             | Error::Network(msg)
+            | Error::ChannelClosed(msg)
             | Error::TelegramBot(msg)
             | Error::SystemResources(msg)
             | Error::ProcessTracker(msg) => {
                 write!(f, "{msg}")
-            },
+            }
             #[cfg(target_os = "linux")]
             Error::Systemd(msg) => {
                 write!(f, "{msg}")

@@ -1,4 +1,4 @@
 pub use super::{
-    enums::{ProcessTrackerEvent, SortKey},
+    enums::{ProcessSignal, ProcessTrackerEvent, SortKey},
     structs::{ProcessSnapshot, ProcessStatus, ProcessTree},
 };

@@ -2,6 +2,7 @@ use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
 use super::structs::ProcessSnapshot;
+use crate::types::Result;
 
 /// Events emitted by the tracker on its broadcast bus.
 /// Subscribers receive these without polling.
@@ -33,6 +34,13 @@ pub enum ProcessTrackerEvent {
     WorkComplete {
         pid: u32,
     },
+    /// A process was killed via a KillProcess or KillTree command.
+    ProcessKilled {
+        pid: u32,
+        /// `false` if the signal was sent but the OS reported failure,
+        /// or if the process was not found.
+        success: bool,
+    },
 }
 
 /// One-shot queries callers can send to read tracker state synchronously.
@@ -60,6 +68,146 @@ pub enum ProcessTrackerQuery {
     },
     GetTrackedPids {
         response: oneshot::Sender<Vec<u32>>,
+    },
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessSignal {
+    Kill,
+    #[serde(rename = "int")]
+    Interrupt,
+    Stop,
+    #[serde(rename = "cont")]
+    Continue,
+    Term,
+}
+
+impl std::fmt::Display for ProcessSignal {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Kill => write!(f, "kill"),
+            Self::Interrupt => write!(f, "int"),
+            Self::Stop => write!(f, "stop"),
+            Self::Continue => write!(f, "cont"),
+            Self::Term => write!(f, "term"),
+        }
+    }
+}
+
+impl TryFrom<&str> for ProcessSignal {
+    type Error = String;
+
+    fn try_from(signal: &str) -> Result<Self, Self::Error> {
+        match signal {
+            "kill" => Ok(Self::Kill),
+            "int" => Ok(Self::Interrupt),
+            "stop" => Ok(Self::Stop),
+            "cont" => Ok(Self::Continue),
+            "term" => Ok(Self::Term),
+            _ => Err(format!("Invalid sort key: '{signal}'.")),
+        }
+    }
+}
+
+impl ProcessSignal {
+    /// Returns `None` on Windows for any signal other than Kill,
+    /// since only forceful termination is supported there.
+    pub fn to_sysinfo_signal(&self) -> Option<sysinfo::Signal> {
+        #[cfg(windows)]
+        {
+            // Windows only supports Kill; everything else is a no-op.
+            match self {
+                ProcessSignal::Kill => Some(sysinfo::Signal::Kill),
+                _ => None,
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            Some(match self {
+                ProcessSignal::Kill => sysinfo::Signal::Kill,
+                ProcessSignal::Interrupt => sysinfo::Signal::Interrupt,
+                ProcessSignal::Stop => sysinfo::Signal::Stop,
+                ProcessSignal::Continue => sysinfo::Signal::Continue,
+                ProcessSignal::Term => sysinfo::Signal::Term,
+            })
+        }
+    }
+
+    /// True if this signal is deliverable on the current platform.
+    pub fn is_supported(&self) -> bool {
+        #[cfg(windows)]
+        {
+            // Windows only supports Kill; everything else is a no-op.
+            matches!(self, ProcessSignal::Kill)
+        }
+        #[cfg(not(windows))]
+        {
+            true
+        }
+    }
+
+    /// Returns a list of supported signal based on current platform.
+    pub fn get_supported_signals() -> Vec<ProcessSignal> {
+        #[cfg(windows)]
+        {
+            // Windows only supports Kill; everything else is a no-op.
+            vec![Self::Kill, Self::Interrupt]
+        }
+        #[cfg(not(windows))]
+        {
+            vec![
+                Self::Kill,
+                Self::Interrupt,
+                Self::Stop,
+                Self::Continue,
+                Self::Term,
+            ]
+        }
+    }
+}
+
+/// Mutating commands that alter tracker state or act on live processes.
+/// These require `&mut self` and travel on a separate channel from read-only queries.
+#[derive(Debug)]
+pub enum ProcessTrackerCommand {
+    /// Send an arbitrary signal to a single process.
+    /// Responds with `Ok(true)` on success, `Ok(false)` if the signal was
+    /// delivered but the OS reported failure, or `Err` if the PID was not found.
+    KillProcess {
+        pid: u32,
+        signal: ProcessSignal,
+        response: oneshot::Sender<Result<bool>>,
+    },
+    /// Kill a root process and every descendant in its subtree.
+    /// Responds with the list of PIDs that were successfully signalled.
+    KillTree {
+        root_pid: u32,
+        response: oneshot::Sender<Result<Vec<u32>>>,
+    },
+    /// Begin tracking a new root PID. A no-op if the PID is already tracked.
+    TrackPid {
+        pid: u32,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Stop tracking a root PID and discard its state.
+    UntrackPid {
+        pid: u32,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Replace the polling interval and restart the tick timer immediately.
+    SetPollInterval {
+        interval: std::time::Duration,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Stop emitting ticks; the tracker keeps running and still handles queries/commands.
+    PausePoll {
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Resume ticking at the current poll interval.
+    ResumePoll {
+        response: oneshot::Sender<Result<()>>,
     },
 }
 

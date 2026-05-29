@@ -121,6 +121,8 @@ impl From<&sysinfo::Process> for ProcessSnapshot {
 pub struct ProcessTrackerChannels {
     pub query_tx: mpsc::Sender<ProcessTrackerQuery>,
     pub query_rx: Option<mpsc::Receiver<ProcessTrackerQuery>>,
+    pub command_tx: mpsc::Sender<ProcessTrackerCommand>,
+    pub command_rx: Option<mpsc::Receiver<ProcessTrackerCommand>>,
     pub event_tx: broadcast::Sender<ProcessTrackerEvent>,
 }
 

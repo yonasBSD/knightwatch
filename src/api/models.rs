@@ -18,6 +18,7 @@ pub struct ConfigResponse {
     pub telegram_bot: bool,
     pub system_resources: bool,
     pub systemd: bool,
+    pub allow_process_commands: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +63,16 @@ pub struct ErrorResponse {
 pub struct TopProcessesParams {
     pub limit: Option<usize>,
     pub sort: String,
+}
+
+#[derive(Deserialize)]
+pub struct KillProcessRequest {
+    pub signal: String,
+}
+
+#[derive(Deserialize)]
+pub struct SetPollIntervalRequest {
+    pub interval_ms: u64,
 }
 
 #[cfg(not(debug_assertions))]

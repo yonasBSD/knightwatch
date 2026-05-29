@@ -41,6 +41,7 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
         .route("/process/children/{root_pid}", get(process_children)) // children only
         .route("/process/status/{root_pid}", get(process_status)) // lightweight summary
         .route("/top-processes", get(top_processes)) // top processes
+        .route("/supported-signals", get(supported_signals)) // supported signals
         // ── System Resources ──────────────────────────────────────────────
         .route("/system", get(system_snapshot)) // full system snapshot
         .route("/cpu", get(cpu_snapshot)) // cpu snapshot
@@ -64,6 +65,20 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
     } else {
         api
     }
+}
+
+fn create_process_commands_router() -> Router {
+    Router::new()
+        .route("/process/kill/{pid}", post(kill_process))
+        .route("/process/kill-tree/{root_pid}", post(kill_tree))
+        .route("/process/track/{pid}", post(track_pid))
+        .route("/process/untrack/{pid}", post(untrack_pid))
+        .route("/process/poll/pause", post(pause_poll))
+        .route("/process/poll/resume", post(resume_poll))
+        .route("/process/poll/interval", post(set_poll_interval))
+        .layer(axum::middleware::from_fn(
+            super::middleware::auth_middleware,
+        ))
 }
 
 #[cfg(debug_assertions)]
@@ -134,9 +149,12 @@ pub fn init_api_server(cancel_token: CancellationToken) -> Result<Option<Vite>> 
     let mut app = Router::new()
         .nest("/api", api_router)
         .nest("/api", create_common_router());
-    if config.args.enable_auth {
+    if config.args.enable_auth || config.args.allow_process_commands {
         super::session::init_sessions();
         app = app.nest("/api/auth", create_auth_router());
+    }
+    if config.args.allow_process_commands {
+        app = app.nest("/api", create_process_commands_router());
     }
     #[cfg(debug_assertions)]
     let vite = if !config.args.no_dashboard {

@@ -8,7 +8,7 @@ use base64::{Engine as _, engine::general_purpose};
 
 use super::models::*;
 use crate::{
-    process_tracker::{self, ProcessSnapshot, ProcessStatus, ProcessTree},
+    process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
     system_resources, systemd,
     utils::now_rfc3339,
 };
@@ -38,12 +38,13 @@ pub async fn config() -> Json<ConfigResponse> {
     Json(ConfigResponse {
         auth_enabled: args.enable_auth,
         blind: args.blind,
-        pid: args.pid.clone(),
+        pid: process_tracker::get_root_pids().await,
         top_processes: args.top_processes,
         limit_processes: args.limit_processes,
         telegram_bot: args.telegram,
         system_resources: args.system_resources,
         systemd: args.systemd,
+        allow_process_commands: args.allow_process_commands,
     })
 }
 
@@ -215,6 +216,151 @@ pub async fn top_processes(
     })?;
     let top_processes = process_tracker::get_top_processes(sort_key, limit).await;
     Ok(Json(top_processes))
+}
+
+/// `GET /supported-signals`
+///
+/// Returns a list of supported signal based on current platform.
+pub async fn supported_signals() -> Json<Vec<ProcessSignal>> {
+    Json(ProcessSignal::get_supported_signals())
+}
+
+// ---------------------------------------------------------------------------
+// Process command endpoints (requires --allow-process-commands)
+// ---------------------------------------------------------------------------
+
+/// `POST /process/kill/{pid}`
+pub async fn kill_process(
+    Path(pid): Path<u32>,
+    body: Json<KillProcessRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let signal = process_tracker::ProcessSignal::try_from(body.signal.as_str()).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                message: e,
+            }),
+        )
+    })?;
+    if !signal.is_supported() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                success: false,
+                message: crate::errors::Error::unsupported_signal(signal).to_string(),
+            }),
+        ));
+    }
+    process_tracker::kill_process(pid, signal)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    message: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /process/kill-tree/{root_pid}`
+pub async fn kill_tree(
+    Path(root_pid): Path<u32>,
+) -> Result<Json<Vec<u32>>, (StatusCode, Json<ErrorResponse>)> {
+    process_tracker::kill_tree(root_pid)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    message: e.to_string(),
+                }),
+            )
+        })
+}
+
+/// `POST /process/track/{pid}`
+pub async fn track_pid(
+    Path(pid): Path<u32>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    process_tracker::track_pid(pid).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                message: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /process/untrack/{pid}`
+pub async fn untrack_pid(
+    Path(pid): Path<u32>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    process_tracker::untrack_pid(pid).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                message: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /process/poll/pause`
+pub async fn pause_poll() -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    process_tracker::pause_poll().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                message: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /process/poll/resume`
+pub async fn resume_poll() -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    process_tracker::resume_poll().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                success: false,
+                message: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /process/poll/interval`
+pub async fn set_poll_interval(
+    Json(body): Json<SetPollIntervalRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let interval = tokio::time::Duration::from_millis(body.interval_ms);
+    process_tracker::set_poll_interval(interval)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    message: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(StatusCode::OK)
 }
 
 // ---------------------------------------------------------------------------

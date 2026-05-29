@@ -20,11 +20,36 @@
   // Show login when auth is required and no valid token exists.
   // Covers first load, explicit logout, and 401 expiry.
   let needsLogin = $derived(
-    config !== null && config.auth_enabled && !$auth.token
+    config !== null && config.auth_enabled && !$auth.token,
+  );
+
+  // When allow_process_commands is true but auth_enabled is false,
+  // show a login button in the top bar so the user can authenticate
+  // only when they need to perform a protected action.
+  let showLoginButton = $derived(
+    config !== null &&
+      !config.auth_enabled &&
+      config.allow_process_commands &&
+      !$auth.token,
   );
 
   function onLogin() {
     loadConfig();
+  }
+
+  let showLoginPage = $state(false);
+
+  function handleLoginButton() {
+    showLoginPage = true;
+  }
+
+  function handleLoginPageLogin() {
+    showLoginPage = false;
+    loadConfig();
+  }
+
+  function handleLoginPageBack() {
+    showLoginPage = false;
   }
 
   // Tab visibility driven by config
@@ -33,7 +58,7 @@
   let showProcesses = $derived(
     !config ||
       config.top_processes !== false ||
-      (config.pid && config.pid.length > 0)
+      (config.pid && config.pid.length > 0),
   );
   let showSystemd = $derived(!config || config.systemd !== false);
 
@@ -83,6 +108,7 @@
         telegram_bot: false,
         system_resources: false,
         systemd: false,
+        allow_process_commands: false,
       };
     }
 
@@ -135,150 +161,170 @@
 </script>
 
 {#if needsLogin}
-  <LoginPage onLogin={onLogin} />
+  <LoginPage {onLogin} />
+{:else if showLoginPage}
+  <LoginPage onLogin={handleLoginPageLogin} onBack={handleLoginPageBack} />
 {:else}
+  <header id="topbar">
+    <div class="topbar-brand">
+      <span class="brand-dot"></span>
+      <h1>Knight Watch</h1>
+      <span id="status" class:error={statusError}>{status}</span>
+    </div>
 
-<header id="topbar">
-  <div class="topbar-brand">
-    <span class="brand-dot"></span>
-    <h1>Knight Watch</h1>
-    <span id="status" class:error={statusError}>{status}</span>
-  </div>
+    <div id="tabnav" role="tablist" aria-label="Sections" bind:this={tabnavEl}>
+      {#if showScreens}
+        <button
+          class="tab"
+          role="tab"
+          aria-selected={activeTab === "screens"}
+          onclick={() => activateTab("screens")}
+          bind:this={tabEls["screens"]}
+        >
+          <span class="tab-icon" aria-hidden="true">▦</span>
+          <span class="tab-label">Screenshots</span>
+        </button>
+      {/if}
 
-  <div id="tabnav" role="tablist" aria-label="Sections" bind:this={tabnavEl}>
-    {#if showScreens}
+      {#if showSystem}
+        <button
+          class="tab"
+          role="tab"
+          aria-selected={activeTab === "system"}
+          onclick={() => activateTab("system")}
+          bind:this={tabEls["system"]}
+        >
+          <span class="tab-icon" aria-hidden="true">◉</span>
+          <span class="tab-label">System</span>
+        </button>
+      {/if}
+
+      {#if showProcesses}
+        <button
+          class="tab"
+          role="tab"
+          aria-selected={activeTab === "processes"}
+          onclick={() => activateTab("processes")}
+          bind:this={tabEls["processes"]}
+        >
+          <span class="tab-icon" aria-hidden="true">≡</span>
+          <span class="tab-label">Processes</span>
+        </button>
+      {/if}
+
+      {#if showSystemd}
+        <button
+          class="tab"
+          role="tab"
+          aria-selected={activeTab === "systemd"}
+          onclick={() => activateTab("systemd")}
+          bind:this={tabEls["systemd"]}
+        >
+          <span class="tab-icon" aria-hidden="true">≡</span>
+          <span class="tab-label">Systemd</span>
+        </button>
+      {/if}
+
+      <span class="tab-indicator" aria-hidden="true" style={indicatorStyle}
+      ></span>
+    </div>
+
+    <div class="topbar-actions">
+      {#if config}
+        <span
+          class="telegram-indicator"
+          class:tg-on={config.telegram_bot}
+          class:tg-off={!config.telegram_bot}
+          title={config.telegram_bot
+            ? "Telegram bot is running"
+            : "Telegram bot is not running"}
+        >
+          TG Bot
+        </span>
+      {/if}
       <button
-        class="tab"
-        role="tab"
-        aria-selected={activeTab === "screens"}
-        onclick={() => activateTab("screens")}
-        bind:this={tabEls["screens"]}
+        id="shutdown-btn"
+        title="Shut down the server"
+        disabled={shutdownDisabled}
+        onclick={handleShutdown}
       >
-        <span class="tab-icon" aria-hidden="true">▦</span>
-        <span class="tab-label">Screenshots</span>
+        <span class="sd-dot"></span>
+        {shutdownLabel}
       </button>
-    {/if}
 
-    {#if showSystem}
-      <button
-        class="tab"
-        role="tab"
-        aria-selected={activeTab === "system"}
-        onclick={() => activateTab("system")}
-        bind:this={tabEls["system"]}
-      >
-        <span class="tab-icon" aria-hidden="true">◉</span>
-        <span class="tab-label">System</span>
-      </button>
-    {/if}
+      {#if showLoginButton}
+        <button
+          id="login-btn"
+          title="Sign in to perform actions"
+          onclick={handleLoginButton}
+        >
+          <span class="login-icon" aria-hidden="true">⏻</span>
+          Sign in
+        </button>
+      {/if}
 
-    {#if showProcesses}
-      <button
-        class="tab"
-        role="tab"
-        aria-selected={activeTab === "processes"}
-        onclick={() => activateTab("processes")}
-        bind:this={tabEls["processes"]}
-      >
-        <span class="tab-icon" aria-hidden="true">≡</span>
-        <span class="tab-label">Processes</span>
-      </button>
-    {/if}
+      {#if config?.auth_enabled || (config?.allow_process_commands && $auth.token)}
+        <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
+          <span class="logout-icon" aria-hidden="true">⏻</span>
+          Sign out
+        </button>
+      {/if}
+    </div>
+  </header>
 
-    {#if showSystemd}
-      <button
-        class="tab"
-        role="tab"
-        aria-selected={activeTab === "systemd"}
-        onclick={() => activateTab("systemd")}
-        bind:this={tabEls["systemd"]}
-      >
-        <span class="tab-icon" aria-hidden="true">≡</span>
-        <span class="tab-label">Systemd</span>
-      </button>
-    {/if}
-
-    <span class="tab-indicator" aria-hidden="true" style={indicatorStyle}
-    ></span>
-  </div>
-
-  <div class="topbar-actions">
+  <div id="panes">
     {#if config}
-      <span
-        class="telegram-indicator"
-        class:tg-on={config.telegram_bot}
-        class:tg-off={!config.telegram_bot}
-        title={config.telegram_bot
-          ? "Telegram bot is running"
-          : "Telegram bot is not running"}
+      <section
+        class="pane"
+        class:active={activeTab === "screens"}
+        role="tabpanel"
       >
-        TG Bot
-      </span>
-    {/if}
-    <button
-      id="shutdown-btn"
-      title="Shut down the server"
-      disabled={shutdownDisabled}
-      onclick={handleShutdown}
-    >
-      <span class="sd-dot"></span>
-      {shutdownLabel}
-    </button>
+        <ScreensPane
+          active={activeTab === "screens"}
+          bind:status
+          bind:statusError
+          enabled={!config.blind}
+        />
+      </section>
 
-    {#if config?.auth_enabled}
-      <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
-        <span class="logout-icon" aria-hidden="true">⏻</span>
-        Sign out
-      </button>
+      <section
+        class="pane"
+        class:active={activeTab === "system"}
+        role="tabpanel"
+      >
+        <SystemResourcesPane
+          active={activeTab === "system"}
+          enabled={config.system_resources}
+        />
+      </section>
+
+      <section
+        class="pane"
+        class:active={activeTab === "processes"}
+        role="tabpanel"
+      >
+        <ProcessesPane
+          active={activeTab === "processes"}
+          hasPids={config.pid && config.pid.length > 0}
+          hasTopProcesses={config.top_processes}
+          limitProcesses={config.limit_processes ?? 50}
+          allowProcessCommands={config.allow_process_commands ?? false}
+          isAuthenticated={!!$auth.token}
+        />
+      </section>
+
+      <section
+        class="pane"
+        class:active={activeTab === "systemd"}
+        role="tabpanel"
+      >
+        <SystemdPane
+          active={activeTab === "systemd"}
+          enabled={config.systemd}
+        />
+      </section>
     {/if}
   </div>
-</header>
-
-<div id="panes">
-  {#if config}
-    <section
-      class="pane"
-      class:active={activeTab === "screens"}
-      role="tabpanel"
-    >
-      <ScreensPane
-        active={activeTab === "screens"}
-        bind:status
-        bind:statusError
-        enabled={!config.blind}
-      />
-    </section>
-
-    <section class="pane" class:active={activeTab === "system"} role="tabpanel">
-      <SystemResourcesPane
-        active={activeTab === "system"}
-        enabled={config.system_resources}
-      />
-    </section>
-
-    <section
-      class="pane"
-      class:active={activeTab === "processes"}
-      role="tabpanel"
-    >
-      <ProcessesPane
-        active={activeTab === "processes"}
-        hasPids={config.pid && config.pid.length > 0}
-        hasTopProcesses={config.top_processes}
-        limitProcesses={config.limit_processes ?? 50}
-      />
-    </section>
-
-    <section
-      class="pane"
-      class:active={activeTab === "systemd"}
-      role="tabpanel"
-    >
-      <SystemdPane active={activeTab === "systemd"} enabled={config.systemd} />
-    </section>
-  {/if}
-</div>
-
 {/if}
 
 <style>
@@ -490,6 +536,40 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* ── Login button ─────────────────────────────────────── */
+  #login-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.45rem 0.8rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      transform 0.1s ease;
+  }
+  #login-btn:hover {
+    background: rgba(59, 130, 246, 0.12);
+    color: #fff;
+  }
+  #login-btn:active {
+    transform: translateY(1px);
+  }
+  .login-icon {
+    font-size: 0.8rem;
+    opacity: 0.75;
   }
 
   /* ── Logout button ────────────────────────────────────── */

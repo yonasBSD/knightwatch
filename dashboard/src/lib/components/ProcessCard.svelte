@@ -1,7 +1,16 @@
 <script>
   import { formatBytes } from "../utils/format.js";
+  import { apiFetch } from "../api.js";
 
-  let { proc, isRoot = false } = $props();
+  let {
+    proc,
+    isRoot = false,
+    isBeingTracked = true,
+    allowProcessCommands = false,
+    isAuthenticated = false,
+    signals = /** @type {{ value: string; label: string }[]} */ ([]),
+    onRefresh = null,
+  } = $props();
 
   const FD_TYPE_COLOR = {
     file: "#a78bfa",
@@ -20,13 +29,95 @@
   function fdColor(type) {
     return FD_TYPE_COLOR[type] || "#a1a1aa";
   }
+
+  // ── Command state ─────────────────────────────────────────────────
+  let cmdPending = $state(false);
+  let cmdError = $state(null);
+  let showSignalPicker = $state(false);
+
+  let canCommand = $derived(allowProcessCommands && isAuthenticated);
+  let singleSignal = $derived(signals.length === 1);
+
+  async function killProc(signal = "SIGTERM") {
+    if (!confirm(`Send ${signal} to PID ${proc.pid} (${proc.name})?`)) return;
+    cmdPending = true;
+    cmdError = null;
+    showSignalPicker = false;
+    try {
+      const r = await apiFetch(`/api/process/kill/${proc.pid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signal }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? (await r.text()));
+      onRefresh?.();
+    } catch (e) {
+      cmdError = e.message || "Kill failed";
+    } finally {
+      cmdPending = false;
+    }
+  }
+
+  async function killTree() {
+    if (
+      !confirm(
+        `Kill entire process tree rooted at PID ${proc.pid} (${proc.name})?`,
+      )
+    )
+      return;
+    cmdPending = true;
+    cmdError = null;
+    showSignalPicker = false;
+    try {
+      const r = await apiFetch(`/api/process/kill-tree/${proc.pid}`, {
+        method: "POST",
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? (await r.text()));
+      onRefresh?.();
+    } catch (e) {
+      cmdError = e.message || "Kill tree failed";
+    } finally {
+      cmdPending = false;
+    }
+  }
+
+  async function trackProc() {
+    cmdPending = true;
+    cmdError = null;
+    try {
+      const r = await apiFetch(`/api/process/track/${proc.pid}`, {
+        method: "POST",
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? (await r.text()));
+      onRefresh?.();
+    } catch (e) {
+      cmdError = e.message || "Track failed";
+    } finally {
+      cmdPending = false;
+    }
+  }
+
+  async function untrackProc() {
+    cmdPending = true;
+    cmdError = null;
+    try {
+      const r = await apiFetch(`/api/process/untrack/${proc.pid}`, {
+        method: "POST",
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? (await r.text()));
+      onRefresh?.();
+    } catch (e) {
+      cmdError = e.message || "Untrack failed";
+    } finally {
+      cmdPending = false;
+    }
+  }
 </script>
 
 <div class="proc-card" class:root-card={isRoot}>
   <div class="proc-header">
     <div class="proc-name" title="{proc.name} (PID {proc.pid})">
-      {#if isRoot}⬢
-      {/if}{proc.name}
+      {#if isRoot}⬢{/if}{proc.name}
     </div>
     <span class="state-pill {stateCls(proc.state)}">{proc.state}</span>
   </div>
@@ -95,6 +186,75 @@
           </div>
         {/each}
       </div>
+    </div>
+  {/if}
+
+  <!-- ── Process commands ────────────────────────────────────────── -->
+  {#if canCommand}
+    <div class="proc-actions">
+      <div class="kill-group">
+        <button
+          class="proc-btn kill"
+          disabled={cmdPending}
+          onclick={() => killProc(singleSignal ? signals[0].value : "kill")}
+          title={singleSignal ? `Send ${signals[0].label}` : "Send SIGKILL"}
+          >✕ Kill</button
+        >
+        {#if !singleSignal}
+          <button
+            class="proc-btn kill-chevron"
+            disabled={cmdPending}
+            onclick={() => (showSignalPicker = !showSignalPicker)}
+            title="Choose signal"
+            aria-label="Signal options">▾</button
+          >
+        {/if}
+      </div>
+
+      {#if isBeingTracked}
+        <button
+          class="proc-btn untrack"
+          disabled={cmdPending}
+          onclick={untrackProc}
+          title="Untrack this PID">− Untrack</button
+        >
+      {:else}
+        <button
+          class="proc-btn track"
+          disabled={cmdPending}
+          onclick={trackProc}
+          title="Track this PID">+ Track</button
+        >
+      {/if}
+
+      {#if cmdError}
+        <span class="proc-cmd-error">{cmdError}</span>
+      {/if}
+
+      {#if isRoot && singleSignal}
+        <button
+          class="proc-btn kill-tree"
+          disabled={cmdPending}
+          onclick={killTree}>Kill Tree</button
+        >
+      {/if}
+
+      {#if showSignalPicker && !singleSignal}
+        <div class="signal-picker">
+          {#each signals as sig}
+            <button class="proc-btn signal" onclick={() => killProc(sig.value)}>
+              {sig.label}
+            </button>
+          {/each}
+          {#if isRoot}
+            <button
+              class="proc-btn kill-tree"
+              disabled={cmdPending}
+              onclick={killTree}>Kill Tree</button
+            >
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -268,5 +428,109 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* ── Command actions (new) ──────────────────────────────────────── */
+  .proc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--border);
+  }
+  /* Kill + chevron fused into one pill */
+  .kill-group {
+    display: flex;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+  }
+  .kill-group .kill {
+    border: none;
+    border-radius: 0;
+    border-right: 1px solid rgba(248, 113, 113, 0.2);
+  }
+  .kill-group .kill-chevron {
+    border: none;
+    border-radius: 0;
+    padding: 0.2rem 0.4rem;
+  }
+  /* Base button */
+  .proc-btn {
+    background: var(--bg-card);
+    color: var(--text-base);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.68rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s;
+    white-space: nowrap;
+    line-height: 1.6;
+  }
+  .proc-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  /* Variants */
+  .proc-btn.kill,
+  .proc-btn.kill-chevron {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.07);
+  }
+  .proc-btn.kill:hover,
+  .proc-btn.kill-chevron:hover {
+    background: rgba(248, 113, 113, 0.15);
+  }
+  .proc-btn.kill-tree {
+    color: #fb923c;
+    border-color: rgba(251, 146, 60, 0.35);
+    background: rgba(251, 146, 60, 0.07);
+  }
+  .proc-btn.kill-tree:hover {
+    background: rgba(251, 146, 60, 0.15);
+  }
+  .proc-btn.track {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.35);
+    background: rgba(52, 211, 153, 0.07);
+  }
+  .proc-btn.track:hover {
+    background: rgba(52, 211, 153, 0.15);
+  }
+  .proc-btn.untrack {
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.3);
+  }
+  .proc-btn.untrack:hover {
+    background: rgba(148, 163, 184, 0.08);
+  }
+  .proc-btn.signal {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.25);
+    background: rgba(248, 113, 113, 0.05);
+    font-size: 0.62rem;
+    padding: 0.15rem 0.45rem;
+  }
+  .proc-btn.signal:hover {
+    background: rgba(248, 113, 113, 0.13);
+  }
+  /* Signal picker row */
+  .signal-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    width: 100%;
+  }
+  /* Inline error */
+  .proc-cmd-error {
+    width: 100%;
+    color: #f87171;
+    font-size: 0.67rem;
+    font-family: ui-monospace, SFMono-Regular, monospace;
   }
 </style>

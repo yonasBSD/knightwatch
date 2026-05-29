@@ -3,13 +3,33 @@
   import ProcessCard from "./ProcessCard.svelte";
   import { apiFetch } from "../api.js";
 
-  let { active, hasPids, hasTopProcesses, limitProcesses } = $props();
+  let {
+    active,
+    hasPids: hasPidsConfig,
+    hasTopProcesses,
+    limitProcesses,
+    allowProcessCommands = false,
+    isAuthenticated = false,
+  } = $props();
+
+  let hasPids = $state(() => hasPidsConfig);
+
+  // ── Supported signals (fetched once, shared across all cards) ─────
+  const ALL_SIGNALS = [
+    { value: "kill", label: "KILL" },
+    { value: "term", label: "TERM" },
+    { value: "int", label: "INT" },
+    { value: "stop", label: "STOP" },
+    { value: "cont", label: "CONT" },
+  ];
+
+  let supportedSignals = $state(/** @type {string[]} */ ([]));
 
   // ── Tracked processes ─────────────────────────────────────────────
-  let rootGroups = $state([]); // [{pid, root, children, child_count, work_done}]
+  let rootGroups = $state([]);
   let workDone = $state(false);
   let trackedError = $state(false);
-  let openPids = new Set(); // preserve open/close state of <details>
+  let openPids = new Set();
 
   // ── Top processes ─────────────────────────────────────────────────
   let topProcesses = $state([]);
@@ -17,12 +37,17 @@
   let topLimit = $state(5);
   let topError = $state(false);
 
+  // ── Poll controls ─────────────────────────────────────────────────
+  let pollPaused = $state(false);
+  let pollIntervalInput = $state("2000");
+  let pollCmdError = $state(null);
+
   let processInterval = null;
   let topInterval = null;
 
   // ── Tracked fetch ─────────────────────────────────────────────────
   async function refreshTracked() {
-    if (!hasPids) return;
+    if (pollPaused) return;
     try {
       const rIds = await apiFetch("/api/root_pids");
       if (!rIds.ok) throw new Error("HTTP error");
@@ -48,6 +73,7 @@
       }
 
       rootGroups = groups;
+      if (groups.length > 0) hasPids = true;
       workDone = pids.length > 0 && allDone;
       trackedError = false;
     } catch {
@@ -57,7 +83,7 @@
 
   // ── Top processes fetch ───────────────────────────────────────────
   async function refreshTop() {
-    if (!hasTopProcesses) return;
+    if (!hasTopProcesses || pollPaused) return;
     try {
       const r = await apiFetch(
         `/api/top-processes?sort=${topSort}&limit=${topLimit}`,
@@ -70,6 +96,57 @@
       topError = true;
     }
   }
+
+  // ── Poll commands ─────────────────────────────────────────────────
+  async function togglePoll() {
+    pollCmdError = null;
+    const ep = pollPaused
+      ? "/api/process/poll/resume"
+      : "/api/process/poll/pause";
+    try {
+      const r = await apiFetch(ep, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      pollPaused = !pollPaused;
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  async function applyInterval() {
+    pollCmdError = null;
+    const ms = parseInt(pollIntervalInput, 10);
+    if (!ms || ms < 100) {
+      pollCmdError = "Must be ≥ 100 ms";
+      return;
+    }
+    try {
+      const r = await apiFetch("/api/process/poll/interval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_ms: ms }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  let signals = $derived(
+    supportedSignals.length > 0
+      ? ALL_SIGNALS.filter((s) => supportedSignals.includes(s.value))
+      : ALL_SIGNALS,
+  );
+
+  $effect(() => {
+    apiFetch("/api/supported-signals")
+      .then((r) => r.json())
+      .then((data) => {
+        supportedSignals = data;
+      })
+      .catch(() => {
+        supportedSignals = ALL_SIGNALS.map((s) => s.value);
+      });
+  });
 
   onMount(() => {
     refreshTracked();
@@ -97,11 +174,55 @@
   $effect(() => {
     if (topLimit > limitProcesses) topLimit = limitProcesses;
   });
+
+  // Whether commands are actually usable
+  let canCommand = $derived(allowProcessCommands && isAuthenticated);
 </script>
 
 <aside id="process-pane">
   <div class="pane-header">
-    <h2>Processes</h2>
+    <div class="header-title">
+      <h2>Processes</h2>
+      <button
+        class="poll-btn refresh-btn"
+        onclick={refreshTracked}
+        title="Refresh processes"
+      >
+        ↻ Refresh
+      </button>
+    </div>
+    {#if allowProcessCommands}
+      {#if !isAuthenticated}
+        <div class="cmd-auth-notice">
+          <span aria-hidden="true">🔒</span> Sign in to use process commands
+        </div>
+      {:else}
+        <div class="poll-controls">
+          <button
+            class="poll-btn"
+            class:paused={pollPaused}
+            onclick={togglePoll}
+            >{pollPaused ? "▶ Resume Poll" : "⏸ Pause Poll"}</button
+          >
+          <div class="interval-row">
+            <input
+              type="number"
+              class="control-input"
+              style="width:5rem"
+              bind:value={pollIntervalInput}
+              min="100"
+              placeholder="ms"
+            />
+            <button class="poll-btn apply" onclick={applyInterval}
+              >Set ms</button
+            >
+          </div>
+          {#if pollCmdError}
+            <span class="poll-error">{pollCmdError}</span>
+          {/if}
+        </div>
+      {/if}
+    {/if}
   </div>
 
   <div id="process-content">
@@ -113,7 +234,7 @@
 
     <div class="process-columns">
       <!-- Tracked column -->
-      {#if hasPids}
+      {#if hasPids && (hasPidsConfig || rootGroups.length > 0)}
         <div class="process-column">
           <div class="section-header">Tracked</div>
 
@@ -125,7 +246,15 @@
             {#each rootGroups as group (group.pid)}
               <div class="process-group">
                 {#if group.root}
-                  <ProcessCard proc={group.root} isRoot={true} />
+                  <ProcessCard
+                    proc={group.root}
+                    isRoot={true}
+                    isBeingTracked={true}
+                    {allowProcessCommands}
+                    {isAuthenticated}
+                    {signals}
+                    onRefresh={refreshTracked}
+                  />
                 {:else}
                   <div class="muted">Root process {group.pid} exited</div>
                 {/if}
@@ -153,7 +282,14 @@
                       style="border-left:2px solid var(--border);padding-left:0.75rem;margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem"
                     >
                       {#each group.children as child (child.pid)}
-                        <ProcessCard proc={child} />
+                        <ProcessCard
+                          proc={child}
+                          isBeingTracked={false}
+                          {allowProcessCommands}
+                          {isAuthenticated}
+                          {signals}
+                          onRefresh={refreshTracked}
+                        />
                       {/each}
                     </div>
                   </details>
@@ -192,7 +328,14 @@
           {:else}
             <div id="top-processes-list">
               {#each topProcesses as proc (proc.pid)}
-                <ProcessCard {proc} />
+                <ProcessCard
+                  {proc}
+                  isBeingTracked={false}
+                  {allowProcessCommands}
+                  {isAuthenticated}
+                  {signals}
+                  onRefresh={refreshTop}
+                />
               {/each}
             </div>
           {/if}
@@ -216,6 +359,20 @@
     padding: 1rem 2rem;
     border-bottom: 1px solid var(--border-soft);
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .refresh-btn {
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  .refresh-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
   }
   .pane-header h2 {
     font-size: 0.78rem;
@@ -319,5 +476,58 @@
   }
   .children-group > summary::-webkit-details-marker {
     display: none;
+  }
+  .cmd-auth-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.25rem 0.7rem;
+  }
+  .poll-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .interval-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .poll-btn {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+  }
+  .poll-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-base);
+  }
+  .poll-btn.paused {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.4);
+  }
+  .poll-btn.apply {
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  .poll-error {
+    font-size: 0.68rem;
+    color: #f87171;
+    font-family: ui-monospace, monospace;
   }
 </style>

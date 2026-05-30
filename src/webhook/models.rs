@@ -53,7 +53,7 @@ impl From<&ProcessTrackerEvent> for WebhookPayload {
             }
             ProcessTrackerEvent::ProcessKilled { pid, success } => (
                 "process.process_killed",
-                json!({ "pid": pid, "sucess": success }),
+                json!({ "pid": pid, "success": success }),
             ),
         };
         Self::new(event_name, data)

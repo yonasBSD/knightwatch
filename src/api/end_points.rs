@@ -6,7 +6,7 @@ use axum::{
 use axum_extra::{TypedHeader, headers};
 use base64::{Engine as _, engine::general_purpose};
 
-use super::models::*;
+use super::{models::*, utils::*};
 use crate::{
     process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
     system_resources, systemd,
@@ -33,9 +33,9 @@ pub async fn health() -> Json<HealthResponse> {
     })
 }
 
-pub async fn config() -> Json<ConfigResponse> {
+pub async fn info() -> Json<InfoResponse> {
     let args = &crate::prelude::get_config().args;
-    Json(ConfigResponse {
+    Json(InfoResponse {
         auth_enabled: args.enable_auth,
         #[cfg(feature = "screenshot")]
         blind: args.blind,
@@ -88,15 +88,12 @@ pub async fn logout(
 // Screenshot endpoints
 // ---------------------------------------------------------------------------
 
-pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, String)> {
     let images = crate::screen_capture::get_screenshots().await;
     if images.is_empty() {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: "No screens found".to_string(),
-            }),
+            "No screens found".to_string(),
         ));
     }
     let screens: Vec<ScreenshotImage> = images
@@ -152,16 +149,10 @@ pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
 /// Returns only the root process snapshot of a given root pid, or 404 if it has exited.
 pub async fn process_root(
     Path(root_pid): Path<u32>,
-) -> Result<Json<ProcessSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ProcessSnapshot>, (StatusCode, String)> {
     match process_tracker::get_root(root_pid).await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "Root process is not running".to_string(),
-            }),
-        )),
+        None => Err(not_found("Root process is not running".to_string())),
     }
 }
 
@@ -206,17 +197,9 @@ pub async fn process_status(Path(root_pid): Path<u32>) -> Json<ProcessStatus> {
 /// - `400 Bad Request` if `sort` is not a valid sort key
 pub async fn top_processes(
     Query(params): Query<TopProcessesParams>,
-) -> Result<Json<Vec<ProcessSnapshot>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<Vec<ProcessSnapshot>>, (StatusCode, String)> {
     let limit = params.limit.unwrap_or(0);
-    let sort_key = process_tracker::SortKey::try_from(params.sort).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                success: false,
-                message: e,
-            }),
-        )
-    })?;
+    let sort_key = process_tracker::SortKey::try_from(params.sort).map_err(bad_request)?;
     let top_processes = process_tracker::get_top_processes(sort_key, limit).await;
     Ok(Json(top_processes))
 }
@@ -236,133 +219,68 @@ pub async fn supported_signals() -> Json<Vec<ProcessSignal>> {
 pub async fn kill_process(
     Path(pid): Path<u32>,
     body: Json<KillProcessRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let signal = process_tracker::ProcessSignal::try_from(body.signal.as_str()).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                success: false,
-                message: e,
-            }),
-        )
-    })?;
+) -> Result<StatusCode, (StatusCode, String)> {
+    let signal =
+        process_tracker::ProcessSignal::try_from(body.signal.as_str()).map_err(bad_request)?;
     if !signal.is_supported() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                success: false,
-                message: crate::errors::Error::unsupported_signal(signal).to_string(),
-            }),
+        return Err(bad_request(
+            crate::errors::Error::unsupported_signal(signal).to_string(),
         ));
     }
     process_tracker::kill_process(pid, signal)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    message: e.to_string(),
-                }),
-            )
-        })?;
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
 /// `POST /process/kill-tree/{root_pid}`
-pub async fn kill_tree(
-    Path(root_pid): Path<u32>,
-) -> Result<Json<Vec<u32>>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn kill_tree(Path(root_pid): Path<u32>) -> Result<Json<Vec<u32>>, (StatusCode, String)> {
     process_tracker::kill_tree(root_pid)
         .await
         .map(Json)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    message: e.to_string(),
-                }),
-            )
-        })
+        .map_err(internal_server_error)
 }
 
 /// `POST /process/track/{pid}`
-pub async fn track_pid(
-    Path(pid): Path<u32>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    process_tracker::track_pid(pid).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: e.to_string(),
-            }),
-        )
-    })?;
+pub async fn track_pid(Path(pid): Path<u32>) -> Result<StatusCode, (StatusCode, String)> {
+    process_tracker::track_pid(pid)
+        .await
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
 /// `POST /process/untrack/{pid}`
-pub async fn untrack_pid(
-    Path(pid): Path<u32>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    process_tracker::untrack_pid(pid).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: e.to_string(),
-            }),
-        )
-    })?;
+pub async fn untrack_pid(Path(pid): Path<u32>) -> Result<StatusCode, (StatusCode, String)> {
+    process_tracker::untrack_pid(pid)
+        .await
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
 /// `POST /process/poll/pause`
-pub async fn pause_poll() -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    process_tracker::pause_poll().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: e.to_string(),
-            }),
-        )
-    })?;
+pub async fn pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+    process_tracker::pause_poll()
+        .await
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
 /// `POST /process/poll/resume`
-pub async fn resume_poll() -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    process_tracker::resume_poll().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                message: e.to_string(),
-            }),
-        )
-    })?;
+pub async fn resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+    process_tracker::resume_poll()
+        .await
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
 /// `POST /process/poll/interval`
 pub async fn set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<StatusCode, (StatusCode, String)> {
     let interval = tokio::time::Duration::from_millis(body.interval_ms);
     process_tracker::set_poll_interval(interval)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    message: e.to_string(),
-                }),
-            )
-        })?;
+        .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
 }
 
@@ -374,33 +292,20 @@ pub async fn set_poll_interval(
 ///
 /// Returns the current System Snapshot.
 pub async fn system_snapshot()
--> Result<Json<system_resources::SystemSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+-> Result<Json<system_resources::SystemSnapshot>, (StatusCode, String)> {
     match system_resources::get_snapshot().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No System Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No System Snapshot was found".to_string())),
     }
 }
 
 /// `GET /cpu`
 ///
 /// Returns the current Cpu Snapshot.
-pub async fn cpu_snapshot()
--> Result<Json<system_resources::CpuSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn cpu_snapshot() -> Result<Json<system_resources::CpuSnapshot>, (StatusCode, String)> {
     match system_resources::get_cpu().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No Cpu Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No Cpu Snapshot was found".to_string())),
     }
 }
 
@@ -408,16 +313,10 @@ pub async fn cpu_snapshot()
 ///
 /// Returns the current Memory Snapshot.
 pub async fn memory_snapshot()
--> Result<Json<system_resources::MemorySnapshot>, (StatusCode, Json<ErrorResponse>)> {
+-> Result<Json<system_resources::MemorySnapshot>, (StatusCode, String)> {
     match system_resources::get_memory().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No Memory Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No Memory Snapshot was found".to_string())),
     }
 }
 
@@ -446,33 +345,21 @@ pub async fn gpus_snapshots() -> Json<Vec<system_resources::GpuSnapshot>> {
 ///
 /// Returns the current Battery Snapshot.
 pub async fn battery_snapshot()
--> Result<Json<system_resources::BatterySnapshot>, (StatusCode, Json<ErrorResponse>)> {
+-> Result<Json<system_resources::BatterySnapshot>, (StatusCode, String)> {
     match system_resources::get_battery().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No battery Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No battery Snapshot was found".to_string())),
     }
 }
 
 /// `GET /host-info`
 ///
 /// Returns the current Host Info Snapshot.
-pub async fn host_info_snapshot()
--> Result<Json<system_resources::HostInfo>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn host_info_snapshot() -> Result<Json<system_resources::HostInfo>, (StatusCode, String)>
+{
     match system_resources::get_host_info().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No host info was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No host info was found".to_string())),
     }
 }
 
@@ -490,17 +377,10 @@ pub async fn temperatures_snapshots() -> Json<Vec<system_resources::ThermalSnaps
 /// `GET /systemd`
 ///
 /// Returns the current Systemd Snapshot.
-pub async fn systemd_snapshot()
--> Result<Json<systemd::SystemdSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn systemd_snapshot() -> Result<Json<systemd::SystemdSnapshot>, (StatusCode, String)> {
     match systemd::get_snapshot().await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No Systemd Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No Systemd Snapshot was found".to_string())),
     }
 }
 
@@ -509,16 +389,10 @@ pub async fn systemd_snapshot()
 /// Returns Unit Snapshot by name.
 pub async fn unit_snapshot(
     Path(unit_name): Path<String>,
-) -> Result<Json<systemd::UnitSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<systemd::UnitSnapshot>, (StatusCode, String)> {
     match systemd::get_unit(unit_name).await {
         Some(snap) => Ok(Json(snap)),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                success: false,
-                message: "No Unit Snapshot was found".to_string(),
-            }),
-        )),
+        None => Err(not_found("No Unit Snapshot was found".to_string())),
     }
 }
 

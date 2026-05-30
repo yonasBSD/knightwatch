@@ -9,7 +9,7 @@ pub struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ConfigResponse {
+pub struct InfoResponse {
     pub auth_enabled: bool,
     pub blind: bool,
     pub pid: Vec<u32>,
@@ -51,12 +51,6 @@ pub struct ScreenshotImage {
 pub struct ScreenshotResponse {
     pub screens: Vec<ScreenshotImage>,
     pub count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub success: bool,
-    pub message: String,
 }
 
 #[derive(Deserialize)]

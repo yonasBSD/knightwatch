@@ -64,7 +64,7 @@ impl ScreenCapture {
     // OS thread via spawn_blocking, so it never conflicts with the
     // Tokio runtime that owns the current thread.
     async fn screenshot_monitors() -> Result<Vec<Screenshot>> {
-        tokio::task::spawn_blocking(|| Self::screenshot_monitors_blocking())
+        tokio::task::spawn_blocking(Self::screenshot_monitors_blocking)
             .await
             .map_err(|e| Error::Screen(format!("spawn_blocking join error: {e}")))?
     }

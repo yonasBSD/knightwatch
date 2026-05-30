@@ -1,84 +1,13 @@
-use axum::{
-    Router,
-    body::Body,
-    http::StatusCode,
-    response::Response,
-    routing::{get, post},
-};
+use axum::{body::Body, http::StatusCode, response::Response};
 use std::{sync::OnceLock, time::Instant};
-use tokio_util::sync::CancellationToken;
 
-use super::{end_points::*, models::Vite};
+use super::{models::Vite, routers::*};
 use crate::prelude::*;
 
 pub static START_TIME: OnceLock<Instant> = OnceLock::new();
 
 fn init_start_time() {
     START_TIME.get_or_init(Instant::now);
-}
-
-fn create_auth_router() -> Router {
-    Router::new()
-        .route("/login", post(login))
-        .route("/logout", post(logout))
-}
-
-fn create_common_router() -> Router {
-    Router::new()
-        .route("/health", get(health))
-        .route("/config", get(config))
-}
-
-fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Router {
-    let api = Router::new()
-        .route("/shutdown", post(shutdown))
-        // ── Screenshot ────────────────────────────────────────────────────
-        .route("/screenshot", get(screenshot))
-        // ── Process tracking ──────────────────────────────────────────────
-        .route("/root_pids", get(root_pids)) // root pids
-        .route("/process/{root_pid}", get(process_tree)) // full tree
-        .route("/process/root/{root_pid}", get(process_root)) // root only
-        .route("/process/children/{root_pid}", get(process_children)) // children only
-        .route("/process/status/{root_pid}", get(process_status)) // lightweight summary
-        .route("/top-processes", get(top_processes)) // top processes
-        .route("/supported-signals", get(supported_signals)) // supported signals
-        // ── System Resources ──────────────────────────────────────────────
-        .route("/system", get(system_snapshot)) // full system snapshot
-        .route("/cpu", get(cpu_snapshot)) // cpu snapshot
-        .route("/memory", get(memory_snapshot)) // memory snapshot
-        .route("/disks", get(disks_snapshots)) // disks snapshot
-        .route("/networks", get(networks_snapshot)) // networks snapshot
-        .route("/gpus", get(gpus_snapshots)) // gpus snapshot
-        .route("/battery", get(battery_snapshot)) // battery snapshot
-        .route("/host-info", get(host_info_snapshot)) // host info snapshot
-        .route("/temperatures", get(temperatures_snapshots)) // temperatures snapshot
-        // ── Systemd ───────────────────────────────────────────────────────
-        .route("/systemd", get(systemd_snapshot)) // systemd snapshot
-        .route("/unit/{unit_name}", get(unit_snapshot)) // unit snapshot
-        .route("/units/{unit_state}", get(units_by_active_state)) // units by active state
-        .route("/failed_units", get(failed_units)) // failed_units
-        .with_state(cancel_token);
-    if auth_layer {
-        api.layer(axum::middleware::from_fn(
-            super::middleware::auth_middleware,
-        ))
-    } else {
-        api
-    }
-}
-
-fn create_process_commands_router() -> Router {
-    Router::new()
-        .route("/process/kill/{pid}", post(kill_process))
-        .route("/process/kill-tree/{root_pid}", post(kill_tree))
-        .route("/process/track/{pid}", post(track_pid))
-        .route("/process/untrack/{pid}", post(untrack_pid))
-        .route("/process/poll/pause", post(pause_poll))
-        .route("/process/poll/resume", post(resume_poll))
-        .route("/process/poll/interval", post(set_poll_interval))
-        .layer(axum::middleware::from_fn(
-            super::middleware::auth_middleware,
-        ))
 }
 
 #[cfg(debug_assertions)]
@@ -139,23 +68,13 @@ async fn serve_dashboard(uri: axum::http::Uri) -> Response {
     }
 }
 
-pub fn init_api_server(cancel_token: CancellationToken) -> Result<Option<Vite>> {
+pub fn init_api_server(cancel_token: tokio_util::sync::CancellationToken) -> Result<Option<Vite>> {
     let config = get_config();
     if config.args.no_api {
         return Ok(None);
     }
     init_start_time();
-    let api_router = create_api_router(cancel_token.clone(), config.args.enable_auth);
-    let mut app = Router::new()
-        .nest("/api", api_router)
-        .nest("/api", create_common_router());
-    if config.args.enable_auth || config.args.allow_process_commands {
-        super::session::init_sessions();
-        app = app.nest("/api/auth", create_auth_router());
-    }
-    if config.args.allow_process_commands {
-        app = app.nest("/api", create_process_commands_router());
-    }
+    let mut app = create_routers(&config, cancel_token.clone());
     #[cfg(debug_assertions)]
     let vite = if !config.args.no_dashboard {
         app = app.fallback(serve_dashboard);

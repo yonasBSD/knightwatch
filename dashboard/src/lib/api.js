@@ -3,7 +3,7 @@ import { writable, get } from "svelte/store";
 // ── Auth store ────────────────────────────────────────────────────────────────
 // Shape: { token: string | null, loggedOut: boolean }
 // `loggedOut` flips to true on explicit logout or a 401, telling App to show
-// the login screen even before config is loaded.
+// the login screen even before info is loaded.
 
 function createAuthStore() {
   const { subscribe, set, update } = writable({

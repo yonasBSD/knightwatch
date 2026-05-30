@@ -12,29 +12,27 @@
   let activeTab = $state("screens");
   let status = $state("Loading…");
   let statusError = $state(false);
-  let config = $state(null);
+  let info = $state(null);
   let shutdownDisabled = $state(false);
   let shutdownLabel = $state("Shutdown");
 
   // ── Auth ───────────────────────────────────────────────────────────
   // Show login when auth is required and no valid token exists.
   // Covers first load, explicit logout, and 401 expiry.
-  let needsLogin = $derived(
-    config !== null && config.auth_enabled && !$auth.token,
-  );
+  let needsLogin = $derived(info !== null && info.auth_enabled && !$auth.token);
 
   // When allow_process_commands is true but auth_enabled is false,
   // show a login button in the top bar so the user can authenticate
   // only when they need to perform a protected action.
   let showLoginButton = $derived(
-    config !== null &&
-      !config.auth_enabled &&
-      config.allow_process_commands &&
+    info !== null &&
+      !info.auth_enabled &&
+      info.allow_process_commands &&
       !$auth.token,
   );
 
   function onLogin() {
-    loadConfig();
+    loadInfo();
   }
 
   let showLoginPage = $state(false);
@@ -45,22 +43,20 @@
 
   function handleLoginPageLogin() {
     showLoginPage = false;
-    loadConfig();
+    loadInfo();
   }
 
   function handleLoginPageBack() {
     showLoginPage = false;
   }
 
-  // Tab visibility driven by config
-  let showScreens = $derived(!config || !config.blind);
-  let showSystem = $derived(!config || config.system_resources !== false);
+  // Tab visibility driven by info
+  let showScreens = $derived(!info || !info.blind);
+  let showSystem = $derived(!info || info.system_resources !== false);
   let showProcesses = $derived(
-    !config ||
-      config.top_processes !== false ||
-      (config.pid && config.pid.length > 0),
+    !info || info.top_processes !== false || (info.pid && info.pid.length > 0),
   );
-  let showSystemd = $derived(!config || config.systemd !== false);
+  let showSystemd = $derived(!info || info.systemd !== false);
 
   // Tab indicator refs
   let tabnavEl = $state(null);
@@ -90,16 +86,16 @@
     });
   }
 
-  // ── Config load ───────────────────────────────────────────────────
-  async function loadConfig() {
+  // ── info load ───────────────────────────────────────────────────
+  async function loadInfo() {
     try {
-      const r = await apiFetch("/api/config");
-      if (!r.ok) throw new Error("config fetch failed");
-      config = await r.json();
+      const r = await apiFetch("/api/info");
+      if (!r.ok) throw new Error("info fetch failed");
+      info = await r.json();
     } catch (e) {
-      // If we were redirected to login, don't overwrite config with defaults
+      // If we were redirected to login, don't overwrite info with defaults
       if (e?.message === "Unauthorized") return;
-      config = {
+      info = {
         auth_enabled: false,
         blind: false,
         pid: [],
@@ -113,16 +109,16 @@
     }
 
     // Navigate away from blind tab
-    if (config.blind && activeTab === "screens") {
+    if (info.blind && activeTab === "screens") {
       activateTab("system");
     }
 
     // Ensure active tab is visible
     requestAnimationFrame(() => {
       const visibleTabs = TAB_NAMES.filter((t) => {
-        if (t === "screens" && config.blind) return false;
-        if (t === "system" && !config.system_resources) return false;
-        if (t === "systemd" && !config.systemd) return false;
+        if (t === "screens" && info.blind) return false;
+        if (t === "system" && !info.system_resources) return false;
+        if (t === "systemd" && !info.systemd) return false;
         return true;
       });
       if (!visibleTabs.includes(activeTab)) {
@@ -152,7 +148,7 @@
     const initial = TAB_NAMES.includes(fromHash) ? fromHash : "screens";
     requestAnimationFrame(() => activateTab(initial));
 
-    loadConfig();
+    loadInfo();
 
     const onResize = () => moveIndicator(activeTab);
     window.addEventListener("resize", onResize);
@@ -230,12 +226,12 @@
     </div>
 
     <div class="topbar-actions">
-      {#if config}
+      {#if info}
         <span
           class="telegram-indicator"
-          class:tg-on={config.telegram_bot}
-          class:tg-off={!config.telegram_bot}
-          title={config.telegram_bot
+          class:tg-on={info.telegram_bot}
+          class:tg-off={!info.telegram_bot}
+          title={info.telegram_bot
             ? "Telegram bot is running"
             : "Telegram bot is not running"}
         >
@@ -263,7 +259,7 @@
         </button>
       {/if}
 
-      {#if config?.auth_enabled || (config?.allow_process_commands && $auth.token)}
+      {#if info?.auth_enabled || (info?.allow_process_commands && $auth.token)}
         <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
           <span class="logout-icon" aria-hidden="true">⏻</span>
           Sign out
@@ -273,7 +269,7 @@
   </header>
 
   <div id="panes">
-    {#if config}
+    {#if info}
       <section
         class="pane"
         class:active={activeTab === "screens"}
@@ -283,7 +279,7 @@
           active={activeTab === "screens"}
           bind:status
           bind:statusError
-          enabled={!config.blind}
+          enabled={!info.blind}
         />
       </section>
 
@@ -294,7 +290,7 @@
       >
         <SystemResourcesPane
           active={activeTab === "system"}
-          enabled={config.system_resources}
+          enabled={info.system_resources}
         />
       </section>
 
@@ -305,10 +301,10 @@
       >
         <ProcessesPane
           active={activeTab === "processes"}
-          hasPids={config.pid && config.pid.length > 0}
-          hasTopProcesses={config.top_processes}
-          limitProcesses={config.limit_processes ?? 50}
-          allowProcessCommands={config.allow_process_commands ?? false}
+          hasPids={info.pid && info.pid.length > 0}
+          hasTopProcesses={info.top_processes}
+          limitProcesses={info.limit_processes ?? 50}
+          allowProcessCommands={info.allow_process_commands ?? false}
           isAuthenticated={!!$auth.token}
         />
       </section>
@@ -318,10 +314,7 @@
         class:active={activeTab === "systemd"}
         role="tabpanel"
       >
-        <SystemdPane
-          active={activeTab === "systemd"}
-          enabled={config.systemd}
-        />
+        <SystemdPane active={activeTab === "systemd"} enabled={info.systemd} />
       </section>
     {/if}
   </div>

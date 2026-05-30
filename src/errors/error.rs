@@ -5,6 +5,7 @@ use teloxide::errors::RequestError;
 pub enum Error {
     Network(String),
     ChannelClosed(String),
+    #[cfg(feature = "screenshot")]
     Screen(String),
     Config(String),
     ProcessTracker(String),
@@ -38,7 +39,6 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::Other(msg)
-            | Error::Screen(msg)
             | Error::Config(msg)
             | Error::Network(msg)
             | Error::ChannelClosed(msg)
@@ -49,6 +49,10 @@ impl std::fmt::Display for Error {
             }
             #[cfg(target_os = "linux")]
             Error::Systemd(msg) => {
+                write!(f, "{msg}")
+            }
+            #[cfg(feature = "screenshot")]
+            Error::Screen(msg) => {
                 write!(f, "{msg}")
             }
         }

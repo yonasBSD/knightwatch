@@ -31,6 +31,7 @@ pub struct CliArgs {
     pub no_dashboard: bool,
 
     /// Disable the Screen Capture API, which may require elevated permissions on some platforms
+    #[cfg(feature = "screenshot")]
     #[arg(long, default_value_t = false)]
     pub blind: bool,
 

@@ -21,6 +21,7 @@ async fn main() -> Result<(), errors::Error> {
     if let Some(action) = config.args.command.as_ref() {
         return config::handle_command(action);
     }
+    #[cfg(feature = "screenshot")]
     screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();
     system_resources::init_system_resources();

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Screenshot {
     pub image: Vec<u8>,

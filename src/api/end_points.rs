@@ -37,7 +37,10 @@ pub async fn config() -> Json<ConfigResponse> {
     let args = &crate::prelude::get_config().args;
     Json(ConfigResponse {
         auth_enabled: args.enable_auth,
+        #[cfg(feature = "screenshot")]
         blind: args.blind,
+        #[cfg(not(feature = "screenshot"))]
+        blind: true,
         pid: process_tracker::get_root_pids().await,
         top_processes: args.top_processes,
         limit_processes: args.limit_processes,

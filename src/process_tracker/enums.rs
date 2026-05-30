@@ -71,7 +71,7 @@ pub enum ProcessTrackerQuery {
     },
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessSignal {
     Kill,
@@ -105,7 +105,7 @@ impl TryFrom<&str> for ProcessSignal {
             "stop" => Ok(Self::Stop),
             "cont" => Ok(Self::Continue),
             "term" => Ok(Self::Term),
-            _ => Err(format!("Invalid sort key: '{signal}'.")),
+            _ => Err(format!("Invalid signal: '{signal}'.")),
         }
     }
 }
@@ -153,7 +153,7 @@ impl ProcessSignal {
         #[cfg(windows)]
         {
             // Windows only supports Kill; everything else is a no-op.
-            vec![Self::Kill, Self::Interrupt]
+            vec![Self::Kill]
         }
         #[cfg(not(windows))]
         {

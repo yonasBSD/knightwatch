@@ -25,6 +25,7 @@ install-path = "CARGO_HOME"
 publish-jobs = ["homebrew"]
 # Whether to install an updater program
 install-updater = true
+allow-dirty = ["ci"]
 
 [dist.dependencies.apt]
 libwayland-dev = { version = "*", targets = [

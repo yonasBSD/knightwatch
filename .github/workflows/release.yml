@@ -165,6 +165,35 @@ jobs:
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
 
+  build-linux-headless:
+      name: build-linux-headless
+      needs:
+        - plan
+        - host
+      if: ${{ needs.plan.outputs.publishing == 'true' && needs.host.result == 'success' }}
+      runs-on: "ubuntu-22.04"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      steps:
+        - uses: actions/checkout@v6
+          with:
+            persist-credentials: false
+            submodules: recursive
+        - name: Install Rust
+          run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        - name: Install dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y libwayland-dev libegl-dev libgbm-dev
+        - name: Build headless binary
+          run: cargo build --release --no-default-features
+        - name: Package
+          run: |
+            tar -czf knightwatch-linux-x86_64-headless.tar.gz -C target/release knightwatch
+        - name: Upload to release
+          run: |
+            gh release upload ${{ needs.plan.outputs.tag }} knightwatch-linux-x86_64-headless.tar.gz
+
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
     needs:
@@ -217,7 +246,6 @@ jobs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
-    # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
     if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

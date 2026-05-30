@@ -2,15 +2,18 @@ use std::sync::Arc;
 use teloxide::{
     prelude::*,
     types::{
-        ChatId, InputFile, InputMedia, InputMediaPhoto, KeyboardButton, KeyboardMarkup, ParseMode,
-        ReplyMarkup,
+        ChatId, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, InputMedia, InputMediaPhoto,
+        KeyboardButton, KeyboardMarkup, ParseMode, ReplyMarkup,
     },
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    models::{AuthState, ChatState, Command, State, TelegramBot, TelegramDisplay},
+    models::{
+        AuthState, ChatState, Command, ProcessCallbackAction, State, Subsystem, TelegramBot,
+        TelegramDisplay,
+    },
     utils::escape_mdv2,
 };
 use crate::{prelude::*, process_tracker, system_resources, systemd, utils::recv_or_pending};
@@ -143,8 +146,9 @@ fn main_keyboard() -> KeyboardMarkup {
         ],
         vec![
             KeyboardButton::new("🔧 Systemd"),
-            KeyboardButton::new("📋 Help"),
+            KeyboardButton::new("⚙️ Settings"),
         ],
+        vec![KeyboardButton::new("📋 Help")],
         vec![KeyboardButton::new("🔑 Authenticate")],
         vec![KeyboardButton::new("🔴 Stop")],
     ])
@@ -182,6 +186,73 @@ fn awaiting_auth_token_keyboard() -> KeyboardMarkup {
     KeyboardMarkup::new([[KeyboardButton::new("❌ Cancel")]]).resize_keyboard()
 }
 
+fn settings_keyboard() -> KeyboardMarkup {
+    KeyboardMarkup::new([
+        vec![KeyboardButton::new("⏱️ Polling")],
+        vec![KeyboardButton::new("❌ Cancel")],
+    ])
+    .resize_keyboard()
+}
+
+fn polling_subsystem_keyboard() -> KeyboardMarkup {
+    KeyboardMarkup::new([
+        vec![KeyboardButton::new("⏱️ Process Tracker Polling")],
+        vec![KeyboardButton::new("❌ Cancel")],
+    ])
+    .resize_keyboard()
+}
+
+fn subsystem_polling_keyboard(subsystem: &Subsystem) -> KeyboardMarkup {
+    let label = subsystem.label();
+    KeyboardMarkup::new([
+        vec![
+            KeyboardButton::new(format!("⏸️ Pause {label}")),
+            KeyboardButton::new(format!("▶️ Resume {label}")),
+        ],
+        vec![KeyboardButton::new(format!("🕐 Set {label} Interval"))],
+        vec![KeyboardButton::new("❌ Cancel")],
+    ])
+    .resize_keyboard()
+}
+
+/// Inline keyboard attached to a tracked-process message (shows Untrack + Kill Tree + signals).
+fn tracked_process_keyboard(root_pid: u32) -> InlineKeyboardMarkup {
+    let mut rows = vec![vec![
+        InlineKeyboardButton::callback(
+            "➖ Untrack",
+            ProcessCallbackAction::Untrack { pid: root_pid }.encode(),
+        ),
+        InlineKeyboardButton::callback(
+            "🌲 Kill Tree",
+            ProcessCallbackAction::KillTree { pid: root_pid }.encode(),
+        ),
+    ]];
+
+    let signal_row = process_tracker::ProcessSignal::get_supported_signals()
+        .into_iter()
+        .map(|signal| {
+            let label = signal.to_string().to_uppercase();
+            let data = ProcessCallbackAction::Signal {
+                pid: root_pid,
+                signal,
+            }
+            .encode();
+            InlineKeyboardButton::callback(label, data)
+        })
+        .collect::<Vec<_>>();
+
+    rows.push(signal_row);
+    InlineKeyboardMarkup::new(rows)
+}
+
+/// Inline keyboard attached to a top-process message (shows Track).
+fn top_process_keyboard(pid: u32) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new([[InlineKeyboardButton::callback(
+        "➕ Track",
+        ProcessCallbackAction::Track { pid }.encode(),
+    )]])
+}
+
 fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
     let command_handler = teloxide::filter_command::<Command, _>()
         .branch(dptree::case![Command::Start].endpoint(handle_start))
@@ -194,9 +265,13 @@ fn schema() -> teloxide::dispatching::UpdateHandler<Error> {
         .branch(dptree::case![Command::TopProcesses].endpoint(handle_top_processes_menu))
         .branch(dptree::case![Command::StopKnightWatch].endpoint(handle_stop));
 
-    Update::filter_message()
-        .branch(command_handler)
-        .branch(dptree::endpoint(handle_plain_message))
+    dptree::entry()
+        .branch(
+            Update::filter_message()
+                .branch(command_handler)
+                .branch(dptree::endpoint(handle_plain_message)),
+        )
+        .branch(Update::filter_callback_query().endpoint(handle_callback_query))
 }
 
 async fn handle_start(
@@ -283,7 +358,14 @@ async fn handle_process(bot: Bot, msg: Message, state: State) -> Result<()> {
     if !state.is_authorized(msg.chat.id) {
         return send_auth_first_message(bot, msg.chat.id).await;
     }
-    for root_pid in process_tracker::get_root_pids().await {
+    let root_pids = process_tracker::get_root_pids().await;
+    if root_pids.is_empty() {
+        bot.send_message(msg.chat.id, "📊 No tracked processes found.")
+            .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
+            .await?;
+        return Ok(());
+    }
+    for root_pid in root_pids {
         let (root, children, work_done) = tokio::join!(
             process_tracker::get_root(root_pid),
             process_tracker::get_children(root_pid),
@@ -299,6 +381,7 @@ async fn handle_process(bot: Bot, msg: Message, state: State) -> Result<()> {
         });
         bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
             .parse_mode(ParseMode::MarkdownV2)
+            .reply_markup(tracked_process_keyboard(root_pid))
             .await?;
     }
     Ok(())
@@ -348,16 +431,18 @@ async fn handle_top_processes_by(
             .await?;
         return Ok(());
     }
-    let body = snapshots
-        .iter()
-        .map(|s| TelegramDisplay(s).to_string())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    let header = format!("📊 Top Processes by {label}\n\n");
-    bot.send_message(msg.chat.id, format!("{header}{body}"))
+    let header = format!("📊 *Top Processes by {label}*\n\n");
+    bot.send_message(msg.chat.id, header)
         .parse_mode(ParseMode::MarkdownV2)
         .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
         .await?;
+    for snapshot in &snapshots {
+        let body = TelegramDisplay(snapshot).to_string();
+        bot.send_message(msg.chat.id, body)
+            .parse_mode(ParseMode::MarkdownV2)
+            .reply_markup(top_process_keyboard(snapshot.pid))
+            .await?;
+    }
     Ok(())
 }
 
@@ -365,6 +450,260 @@ async fn handle_stop(bot: Bot, msg: Message, cancel_token: CancellationToken) ->
     bot.send_message(msg.chat.id, "🛑 Stopping Knight Watch…")
         .await?;
     cancel_token.cancel();
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings / polling handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async fn handle_settings_menu(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    state.set_chat_state_idle(msg.chat.id);
+    bot.send_message(msg.chat.id, "⚙️ *Settings*")
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(settings_keyboard()))
+        .await?;
+    Ok(())
+}
+
+async fn handle_polling_menu(bot: Bot, msg: Message, state: State) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    state.set_chat_state_idle(msg.chat.id);
+    bot.send_message(msg.chat.id, "⏱️ *Polling* — choose a subsystem:")
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(polling_subsystem_keyboard()))
+        .await?;
+    Ok(())
+}
+
+async fn handle_subsystem_polling_menu(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    subsystem: Subsystem,
+) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    state.set_chat_state_idle(msg.chat.id);
+    let label = subsystem.label();
+    bot.send_message(
+        msg.chat.id,
+        format!("⏱️ *{label} Polling*", label = escape_mdv2(label)),
+    )
+    .parse_mode(ParseMode::MarkdownV2)
+    .reply_markup(ReplyMarkup::Keyboard(subsystem_polling_keyboard(
+        &subsystem,
+    )))
+    .await?;
+    Ok(())
+}
+
+async fn handle_pause_polling(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    subsystem: Subsystem,
+) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    let reply = match &subsystem {
+        Subsystem::ProcessTracker => match process_tracker::pause_poll().await {
+            Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
+    };
+    bot.send_message(msg.chat.id, reply)
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(subsystem_polling_keyboard(
+            &subsystem,
+        )))
+        .await?;
+    Ok(())
+}
+
+async fn handle_resume_polling(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    subsystem: Subsystem,
+) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    let reply = match &subsystem {
+        Subsystem::ProcessTracker => match process_tracker::resume_poll().await {
+            Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
+    };
+    bot.send_message(msg.chat.id, reply)
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(subsystem_polling_keyboard(
+            &subsystem,
+        )))
+        .await?;
+    Ok(())
+}
+
+async fn handle_poll_interval_prompt(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    subsystem: Subsystem,
+) -> Result<()> {
+    if !state.is_authorized_to_commmand(msg.chat.id) {
+        return send_auth_first_message(bot, msg.chat.id).await;
+    }
+    let label = subsystem.label();
+    state.set_chat_state(msg.chat.id, ChatState::AwaitingPollInterval { subsystem });
+    bot.send_message(
+        msg.chat.id,
+        format!(
+            "🕐 Enter the new poll interval for *{}* in seconds \\(e\\.g\\. `5`\\):",
+            escape_mdv2(label)
+        ),
+    )
+    .parse_mode(ParseMode::MarkdownV2)
+    .reply_markup(ReplyMarkup::Keyboard(
+        KeyboardMarkup::new([[KeyboardButton::new("❌ Cancel")]]).resize_keyboard(),
+    ))
+    .await?;
+    Ok(())
+}
+
+async fn handle_poll_interval_input(
+    bot: Bot,
+    msg: Message,
+    state: State,
+    subsystem: Subsystem,
+    input: String,
+) -> Result<()> {
+    state.set_chat_state_idle(msg.chat.id);
+    let reply = match input.trim().parse::<u64>() {
+        Ok(secs) if secs > 0 => {
+            let interval = std::time::Duration::from_secs(secs);
+            let label = escape_mdv2(subsystem.label());
+            let result = match &subsystem {
+                Subsystem::ProcessTracker => process_tracker::set_poll_interval(interval).await,
+            };
+            match result {
+                Ok(()) => format!("✅ *{label}* poll interval set to `{secs}s`\\."),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            }
+        }
+        _ => "⚠️ Invalid input\\. Please enter a positive integer number of seconds\\.".to_string(),
+    };
+    bot.send_message(msg.chat.id, reply)
+        .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(ReplyMarkup::Keyboard(subsystem_polling_keyboard(
+            &subsystem,
+        )))
+        .await?;
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline button callback handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+async fn handle_callback_query(bot: Bot, q: CallbackQuery, state: State) -> Result<()> {
+    let _ = bot.answer_callback_query(q.id.clone()).await;
+    let chat_id = match q.message.as_ref().map(|m| m.chat().id) {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+    if !state.is_authorized_to_commmand(chat_id) {
+        bot.send_message(chat_id, "🔒 Please authenticate first\\.")
+            .parse_mode(ParseMode::MarkdownV2)
+            .await?;
+        return Ok(());
+    }
+    let data = match &q.data {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+    if let Some(action) = ProcessCallbackAction::decode(data) {
+        return handle_process_callback(bot, q, chat_id, action).await;
+    }
+    bot.send_message(chat_id, "❓ Unknown action\\.").await?;
+    Ok(())
+}
+
+async fn handle_process_callback(
+    bot: Bot,
+    q: CallbackQuery,
+    chat_id: ChatId,
+    action: ProcessCallbackAction,
+) -> Result<()> {
+    match action {
+        ProcessCallbackAction::Track { pid } => {
+            let reply = match process_tracker::track_pid(pid).await {
+                Ok(()) => format!("✅ Now tracking PID `{pid}`\\."),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            if let Some(msg) = &q.message {
+                let _ = bot
+                    .edit_message_reply_markup(chat_id, msg.id())
+                    .reply_markup(InlineKeyboardMarkup::new([[
+                        InlineKeyboardButton::callback("✅ Tracking", "noop"),
+                    ]]))
+                    .await;
+            }
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+        ProcessCallbackAction::Untrack { pid } => {
+            let reply = match process_tracker::untrack_pid(pid).await {
+                Ok(()) => format!("✅ Untracked PID `{pid}`\\."),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            if let Some(msg) = &q.message {
+                let _ = bot
+                    .edit_message_reply_markup(chat_id, msg.id())
+                    .reply_markup(InlineKeyboardMarkup::new([[
+                        InlineKeyboardButton::callback("🚫 Untracked", "noop"),
+                    ]]))
+                    .await;
+            }
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+        ProcessCallbackAction::KillTree { pid } => {
+            let reply = match process_tracker::kill_tree(pid).await {
+                Ok(killed) => {
+                    let pids = killed
+                        .iter()
+                        .map(|p| format!("`{p}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("🌲 Kill tree sent to PID `{pid}`\\.\nSignalled: {pids}")
+                }
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+        ProcessCallbackAction::Signal { pid, signal } => {
+            let reply = match process_tracker::kill_process(pid, signal).await {
+                Ok(true) => format!("✅ Signal sent to PID `{pid}`\\."),
+                Ok(false) => format!("⚠️ OS rejected signal for PID `{pid}`\\."),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+    }
     Ok(())
 }
 
@@ -516,6 +855,12 @@ async fn handle_plain_message(
     if chat_state == ChatState::AwaitingAuthToken && text != "❌ Cancel" {
         return handle_auth_token(bot, msg, chat_state_tx, state, text.to_string()).await;
     }
+    if let ChatState::AwaitingPollInterval { subsystem } = chat_state
+        && text != "❌ Cancel"
+    {
+        return handle_poll_interval_input(bot, msg, state, subsystem, text.to_string()).await;
+    }
+
     match text {
         "📋 Help" => handle_help(bot, msg).await?,
         "🖼️ Screenshot" => handle_screenshot(bot, msg, state).await?,
@@ -530,6 +875,24 @@ async fn handle_plain_message(
         "📋 Systemd Overview" => handle_systemd_overview(bot, msg).await?,
         "🔴 Failed Units" => handle_systemd_failed(bot, msg).await?,
         "🔍 Unit Status" => handle_systemd_unit_prompt(bot, msg, state).await?,
+        "⚙️ Settings" => handle_settings_menu(bot, msg, state).await?,
+        "⏱️ Polling" => handle_polling_menu(bot, msg, state).await?,
+        // Subsystem polling pickers
+        "⏱️ Process Tracker Polling" => {
+            handle_subsystem_polling_menu(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
+        // Per-subsystem pause
+        "⏸️ Pause Process Tracker" => {
+            handle_pause_polling(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
+        // Per-subsystem resume
+        "▶️ Resume Process Tracker" => {
+            handle_resume_polling(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
+        // Per-subsystem set interval
+        "🕐 Set Process Tracker Interval" => {
+            handle_poll_interval_prompt(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
         "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {
             state.set_chat_state_idle(msg.chat.id);

@@ -7,6 +7,7 @@ use teloxide::types::ChatId;
 use super::utils::escape_mdv2;
 use crate::{
     prelude::*,
+    process_tracker::ProcessSignal,
     systemd::UnitActiveState,
     utils::{format_bytes, format_uptime},
 };
@@ -128,6 +129,10 @@ impl State {
         }
         self.get_chat_auth(chat_id) == AuthState::Authenticated
     }
+
+    pub fn is_authorized_to_commmand(&self, chat_id: ChatId) -> bool {
+        self.get_chat_auth(chat_id) == AuthState::Authenticated
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -153,10 +158,71 @@ impl Chat {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Subsystem {
+    ProcessTracker,
+}
+
+impl Subsystem {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Subsystem::ProcessTracker => "Process Tracker",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatState {
     Idle,
     AwaitingUnitName,
     AwaitingAuthToken,
+    AwaitingPollInterval { subsystem: Subsystem },
+}
+
+/// Inline-button callback actions, encoded as `"action:payload"` strings.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProcessCallbackAction {
+    /// `"track:1234"`
+    Track { pid: u32 },
+    /// `"untrack:1234"`
+    Untrack { pid: u32 },
+    /// `"killtree:1234"`
+    KillTree { pid: u32 },
+    /// `"signal:1234:kill"` / `"signal:1234:term"` etc. — uses ProcessSignal's Display/TryFrom
+    Signal { pid: u32, signal: ProcessSignal },
+}
+
+impl ProcessCallbackAction {
+    pub fn encode(&self) -> String {
+        match self {
+            ProcessCallbackAction::Track { pid } => format!("track:{pid}"),
+            ProcessCallbackAction::Untrack { pid } => format!("untrack:{pid}"),
+            ProcessCallbackAction::KillTree { pid } => format!("killtree:{pid}"),
+            ProcessCallbackAction::Signal { pid, signal } => format!("signal:{pid}:{signal}"),
+        }
+    }
+
+    pub fn decode(s: &str) -> Option<Self> {
+        let parts: Vec<&str> = s.splitn(3, ':').collect();
+        match parts.as_slice() {
+            ["track", pid] => Some(ProcessCallbackAction::Track {
+                pid: pid.parse().ok()?,
+            }),
+            ["untrack", pid] => Some(ProcessCallbackAction::Untrack {
+                pid: pid.parse().ok()?,
+            }),
+            ["killtree", pid] => Some(ProcessCallbackAction::KillTree {
+                pid: pid.parse().ok()?,
+            }),
+            ["signal", pid, sig] => {
+                let signal = ProcessSignal::try_from(*sig).ok()?;
+                Some(ProcessCallbackAction::Signal {
+                    pid: pid.parse().ok()?,
+                    signal,
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

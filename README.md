@@ -14,12 +14,13 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 
 - **Live Screenshots** — Displays one or more connected screens, refreshed every 2 seconds
 - **Process Monitor** — Tracks a root process and its children with real-time CPU, memory, and state indicators
+- **Process Commands** — Kill, track, untrack processes and control polling via API or Telegram (requires `--allow-process-commands`)
 - **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
 - **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
 - **Linux Extended Telemetry** — Child process snapshots include working directory, command line, open file descriptors, and I/O stats
 - **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
 - **Systemd Monitor** — Live systemd unit tracking with active/failed/inactive counts, per-unit state, resource usage, and change events (Linux only)
-- **Telegram Bot** — Optional bot for remote monitoring and push notifications
+- **Telegram Bot** — Optional bot for remote monitoring, push notifications, and process commands
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 
 ---
@@ -42,6 +43,15 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/YofaGh/knightwatch
 
 ```bash
 brew install YofaGh/tap/knightwatch
+```
+
+### Linux Servers (Headless)
+
+For Linux servers without a display server, a headless build (no screenshot support) is available as a standalone tarball on the [Releases page](https://github.com/YofaGh/knightwatch/releases/latest). Download `knightwatch-headless-x86_64-unknown-linux.tar.gz` and extract it:
+
+```bash
+tar -xzf knightwatch-headless-x86_64-unknown-linux.tar.gz 
+./knightwatch
 ```
 
 ### Pre-built Binaries
@@ -79,7 +89,7 @@ knightwatch --top-processes
 # Combine any of the above
 knightwatch --pid <PID> --system-resources --systemd
 
-# Enable Telegram notifications
+# Enable Telegram bot
 knightwatch --pid <PID> --telegram
 
 # Enable webhook dispatching
@@ -87,6 +97,9 @@ knightwatch --pid <PID> --with-webhook --webhook https://example.com/hook
 
 # Run headless (no screen capture)
 knightwatch --pid <PID> --blind
+
+# Enable process commands (kill, track, untrack, poll control)
+knightwatch --pid <PID> --allow-process-commands
 ```
 
 ### CLI Flags
@@ -107,6 +120,9 @@ knightwatch --pid <PID> --blind
 | `--webhook <URL>` | — | Webhook target URL (repeatable) |
 | `--top-processes` | `false` | Enable top processes tracker |
 | `--limit-processes <N>` | `5` | Number of top processes to track |
+| `--allow-process-commands` | `false` | Enable process command endpoints (kill, track, untrack, poll control) — **always requires authentication** |
+
+> **Note:** `--allow-process-commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
 
 ### Log Level
 
@@ -123,6 +139,7 @@ RUST_LOG=debug knightwatch --pid <PID>
 Full reference documentation is available in the [Wiki](https://github.com/YofaGh/knightwatch/wiki):
 
 - [API Reference](https://github.com/YofaGh/knightwatch/wiki/API-Reference) — All endpoints and response shapes
+- [Process Tracker](https://github.com/YofaGh/knightwatch/wiki/Process-Tracker) — Process tracking, commands, and events
 - [System Resources Monitor](https://github.com/YofaGh/knightwatch/wiki/System-Resources-Monitor) — Hardware telemetry and thresholds
 - [Systemd Monitor](https://github.com/YofaGh/knightwatch/wiki/Systemd-Monitor) — Unit tracking and events (Linux only)
 - [Telegram Bot](https://github.com/YofaGh/knightwatch/wiki/Telegram-Bot) — Setup, commands, and notifications

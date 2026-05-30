@@ -165,8 +165,8 @@ jobs:
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
 
-  build-linux-headless:
-      name: build-linux-headless
+  build-x86_64-linux-headless:
+      name: build-x86_64-linux-headless
       needs:
         - plan
         - host
@@ -189,10 +189,51 @@ jobs:
           run: cargo build --release --no-default-features
         - name: Package
           run: |
-            tar -czf knightwatch-linux-x86_64-headless.tar.gz -C target/release knightwatch
+            cp target/release/knightwatch target/release/knightwatch-headless
+            tar -czf knightwatch-headless-x86_64-unknown-linux.tar.gz \
+              -C target/release knightwatch-headless \
+              -C $GITHUB_WORKSPACE LICENSE README.md
         - name: Upload to release
           run: |
-            gh release upload ${{ needs.plan.outputs.tag }} knightwatch-linux-x86_64-headless.tar.gz
+            gh release upload ${{ needs.plan.outputs.tag }} knightwatch-headless-x86_64-unknown-linux.tar.gz
+
+  build-aarch64-linux-headless:
+      name: build-aarch64-linux-headless
+      needs:
+        - plan
+        - host
+      if: ${{ needs.plan.outputs.publishing == 'true' && needs.host.result == 'success' }}
+      runs-on: "ubuntu-22.04"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      steps:
+        - uses: actions/checkout@v6
+          with:
+            persist-credentials: false
+            submodules: recursive
+        - name: Install Rust
+          run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        - name: Add ARM target
+          run: rustup target add aarch64-unknown-linux-gnu
+        - name: Install dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y \
+              libwayland-dev libegl-dev libgbm-dev \
+              gcc-aarch64-linux-gnu
+        - name: Build headless binary
+          run: cargo build --release --no-default-features --target aarch64-unknown-linux-gnu
+          env:
+            CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        - name: Package
+          run: |
+            cp target/aarch64-unknown-linux-gnu/release/knightwatch target/aarch64-unknown-linux-gnu/release/knightwatch-headless
+            tar -czf knightwatch-headless-aarch64-unknown-linux.tar.gz \
+              -C target/aarch64-unknown-linux-gnu/release knightwatch-headless \
+              -C $GITHUB_WORKSPACE LICENSE README.md
+        - name: Upload to release
+          run: |
+            gh release upload ${{ needs.plan.outputs.tag }} knightwatch-headless-aarch64-unknown-linux.tar.gz
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:

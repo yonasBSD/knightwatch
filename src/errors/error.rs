@@ -5,7 +5,6 @@ use teloxide::errors::RequestError;
 pub enum Error {
     Network(String),
     ChannelClosed(String),
-    #[cfg(feature = "screenshot")]
     Screen(String),
     Config(String),
     ProcessTracker(String),
@@ -34,13 +33,12 @@ impl Error {
         )
     }
     pub fn screen_commands_disabled() -> Self {
-        Self::Screen(
-            "Screen commands are disabled — rerun with --allow-screen-commands".into(),
-        )
+        Self::Screen("Screen commands are disabled — rerun with --allow-screen-commands".into())
     }
     pub fn system_resources_commands_disabled() -> Self {
         Self::SystemResources(
-            "System resources commands are disabled — rerun with --allow-system-resources-commands".into(),
+            "System resources commands are disabled — rerun with --allow-system-resources-commands"
+                .into(),
         )
     }
 }
@@ -53,16 +51,13 @@ impl std::fmt::Display for Error {
             | Error::Network(msg)
             | Error::ChannelClosed(msg)
             | Error::TelegramBot(msg)
+            | Error::Screen(msg)
             | Error::SystemResources(msg)
             | Error::ProcessTracker(msg) => {
                 write!(f, "{msg}")
             }
             #[cfg(target_os = "linux")]
             Error::Systemd(msg) => {
-                write!(f, "{msg}")
-            }
-            #[cfg(feature = "screenshot")]
-            Error::Screen(msg) => {
                 write!(f, "{msg}")
             }
         }

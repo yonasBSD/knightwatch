@@ -119,6 +119,7 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Strin
 // ---------------------------------------------------------------------------
 
 /// `POST /screen/poll/pause`
+#[cfg(feature = "screenshot")]
 pub async fn screen_capture_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
     screen_capture::pause_poll()
         .await
@@ -127,6 +128,7 @@ pub async fn screen_capture_pause_poll() -> Result<StatusCode, (StatusCode, Stri
 }
 
 /// `POST /screen/poll/resume`
+#[cfg(feature = "screenshot")]
 pub async fn screen_capture_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
     screen_capture::resume_poll()
         .await
@@ -135,6 +137,7 @@ pub async fn screen_capture_resume_poll() -> Result<StatusCode, (StatusCode, Str
 }
 
 /// `POST /screen/poll/interval`
+#[cfg(feature = "screenshot")]
 pub async fn screen_capture_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {

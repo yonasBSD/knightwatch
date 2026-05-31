@@ -69,6 +69,7 @@ fn create_process_commands_router() -> Router {
         .layer(middleware::from_fn(auth_middleware))
 }
 
+#[cfg(feature = "screenshot")]
 fn create_screen_commands_router() -> Router {
     Router::new()
         .route("/screen/poll/pause", post(screen_capture_pause_poll))
@@ -96,7 +97,13 @@ fn create_sr_commands_router() -> Router {
 fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
     config.args.enable_auth
         || config.args.allow_process_commands
-        || (!config.args.blind && config.args.allow_screen_commands)
+        || {
+            #[cfg(feature = "screenshot")]
+            let screen_check = !config.args.blind && config.args.allow_screen_commands;
+            #[cfg(not(feature = "screenshot"))]
+            let screen_check = false;
+            screen_check
+        }
         || config.args.allow_system_resources_commands
 }
 
@@ -115,6 +122,7 @@ pub fn create_routers(
     if config.args.allow_process_commands {
         app = app.nest("/api", create_process_commands_router());
     }
+    #[cfg(feature = "screenshot")]
     if !config.args.blind && config.args.allow_screen_commands {
         app = app.nest("/api", create_screen_commands_router());
     }

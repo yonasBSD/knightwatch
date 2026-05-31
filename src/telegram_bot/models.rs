@@ -160,12 +160,14 @@ impl Chat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Subsystem {
     ProcessTracker,
+    ScreenCapture
 }
 
 impl Subsystem {
     pub fn label(&self) -> &'static str {
         match self {
             Subsystem::ProcessTracker => "Process Tracker",
+            Subsystem::ScreenCapture => "Screen Capture",
         }
     }
 }

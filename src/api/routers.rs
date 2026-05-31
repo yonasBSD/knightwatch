@@ -60,10 +60,30 @@ fn create_process_commands_router() -> Router {
         .route("/process/kill-tree/{root_pid}", post(kill_tree))
         .route("/process/track/{pid}", post(track_pid))
         .route("/process/untrack/{pid}", post(untrack_pid))
-        .route("/process/poll/pause", post(pause_poll))
-        .route("/process/poll/resume", post(resume_poll))
-        .route("/process/poll/interval", post(set_poll_interval))
+        .route("/process/poll/pause", post(process_tracker_pause_poll))
+        .route("/process/poll/resume", post(process_tracker_resume_poll))
+        .route(
+            "/process/poll/interval",
+            post(process_tracker_set_poll_interval),
+        )
         .layer(middleware::from_fn(auth_middleware))
+}
+
+fn create_screen_commands_router() -> Router {
+    Router::new()
+        .route("/screen/poll/pause", post(screen_capture_pause_poll))
+        .route("/screen/poll/resume", post(screen_capture_resume_poll))
+        .route(
+            "/screen/poll/interval",
+            post(screen_capture_set_poll_interval),
+        )
+        .layer(middleware::from_fn(auth_middleware))
+}
+
+fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
+    config.args.enable_auth
+        || config.args.allow_process_commands
+        || (!config.args.blind && config.args.allow_screen_commands)
 }
 
 pub fn create_routers(
@@ -74,12 +94,15 @@ pub fn create_routers(
     let mut app = Router::new()
         .nest("/api", api_router)
         .nest("/api", create_common_router());
-    if config.args.enable_auth || config.args.allow_process_commands {
+    if should_enable_auth(config) {
         super::session::init_sessions();
         app = app.nest("/api/auth", create_auth_router());
     }
     if config.args.allow_process_commands {
         app = app.nest("/api", create_process_commands_router());
+    }
+    if !config.args.blind && config.args.allow_screen_commands {
+        app = app.nest("/api", create_screen_commands_router());
     }
     app
 }

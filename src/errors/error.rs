@@ -33,6 +33,11 @@ impl Error {
             "Process commands are disabled — rerun with --allow-process-commands".into(),
         )
     }
+    pub fn screen_commands_disabled() -> Self {
+        Self::Screen(
+            "Screen commands are disabled — rerun with --allow-screen-commands".into(),
+        )
+    }
 }
 
 impl std::fmt::Display for Error {

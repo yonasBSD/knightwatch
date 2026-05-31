@@ -5,21 +5,45 @@ use xcap::Monitor;
 use super::models::*;
 use crate::prelude::*;
 
+impl ScreenCaptureChannels {
+    pub fn new() -> Self {
+        let (query_tx, query_rx) = mpsc::channel(1024);
+        let (command_tx, command_rx) = mpsc::channel(256);
+        Self {
+            query_tx,
+            query_rx: Some(query_rx),
+            command_tx,
+            command_rx: Some(command_rx),
+        }
+    }
+
+    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<ScreenCaptureQuery>> {
+        self.query_rx
+            .take()
+            .ok_or_else(|| Error::Screen("Query receiver already taken".into()))
+    }
+
+    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<ScreenCaptureCommand>> {
+        self.command_rx
+            .take()
+            .ok_or_else(|| Error::Screen("Command receiver already taken".into()))
+    }
+}
+
 struct ScreenCapture {
     last_captures: Vec<Screenshot>,
-    query_tx: mpsc::Sender<ScreenCaptureQuery>,
-    query_rx: Option<mpsc::Receiver<ScreenCaptureQuery>>,
+    channels: ScreenCaptureChannels,
     poll_interval: Duration,
+    poll_interval_timer: Option<tokio::time::Interval>,
 }
 
 impl ScreenCapture {
     pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
         Self {
             last_captures: Vec::new(),
-            query_tx,
-            query_rx: Some(query_rx),
+            channels: ScreenCaptureChannels::new(),
             poll_interval: Duration::from_secs(2),
+            poll_interval_timer: None,
         }
     }
 
@@ -31,14 +55,24 @@ impl ScreenCapture {
 
     async fn start_capturing_loop(mut self) -> Result<()> {
         self.handle_tick().await;
-        let mut query_rx = self.query_rx.take().expect("Failed to take query receiver");
-        let mut poll_interval_timer = tokio::time::interval(self.poll_interval);
+        let mut query_rx = self
+            .channels
+            .take_query_rx()
+            .expect("Failed to take query receiver");
+        let mut command_rx = self
+            .channels
+            .take_command_rx()
+            .expect("Failed to take command receiver");
+        self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
         loop {
             tokio::select! {
                 Some(query) = query_rx.recv() => {
                     self.handle_query(query);
                 }
-                _ = poll_interval_timer.tick() => {
+                Some(command) = command_rx.recv() => {
+                    self.handle_command(command);
+                }
+                _ = async { self.poll_interval_timer.as_mut().unwrap().tick().await }, if self.poll_interval_timer.is_some() => {
                     self.handle_tick().await;
                 }
             }
@@ -49,6 +83,30 @@ impl ScreenCapture {
         match query {
             ScreenCaptureQuery::GetScreenshots { response } => {
                 let _ = response.send(self.last_captures.clone());
+            }
+        }
+    }
+
+    fn handle_command(&mut self, command: ScreenCaptureCommand) {
+        match command {
+            // ----------------------------------------------------------------
+            // Polling control.
+            // ----------------------------------------------------------------
+            ScreenCaptureCommand::SetPollInterval { interval, response } => {
+                self.poll_interval = interval;
+                self.poll_interval_timer = Some(tokio::time::interval(interval));
+                info!(ms = interval.as_millis(), "poll interval updated");
+                let _ = response.send(Ok(()));
+            }
+            ScreenCaptureCommand::PausePoll { response } => {
+                self.poll_interval_timer = None;
+                info!("polling paused");
+                let _ = response.send(Ok(()));
+            }
+            ScreenCaptureCommand::ResumePoll { response } => {
+                self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
+                info!("polling resumed");
+                let _ = response.send(Ok(()));
             }
         }
     }
@@ -108,15 +166,23 @@ impl ScreenCapture {
 
 pub static SCREEN_CAPTURE_QUERY_SENDER: OnceLock<mpsc::Sender<ScreenCaptureQuery>> =
     OnceLock::new();
+pub static SCREEN_CAPTURE_COMMAND_SENDER: OnceLock<mpsc::Sender<ScreenCaptureCommand>> =
+    OnceLock::new();
 
 pub fn init_screen_capture() {
-    if get_config().args.blind {
+    let config = get_config();
+    if config.args.blind {
         return;
     }
     let screen_capture = ScreenCapture::new();
     SCREEN_CAPTURE_QUERY_SENDER
-        .set(screen_capture.query_tx.clone())
+        .set(screen_capture.channels.query_tx.clone())
         .unwrap();
+    if config.args.allow_screen_commands {
+        SCREEN_CAPTURE_COMMAND_SENDER
+            .set(screen_capture.channels.command_tx.clone())
+            .unwrap();
+    }
     tokio::spawn(async move {
         if let Err(e) = screen_capture.start_capturing_loop().await {
             error!(?e, "screen capture loop exited with error");

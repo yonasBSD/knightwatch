@@ -7,6 +7,8 @@
     enabled,
     status = $bindable(),
     statusError = $bindable(),
+    allowScreenCommands = false,
+    isAuthenticated = false,
   } = $props();
 
   /** @type {Array<{monitor_id: string|number, monitor_name: string, width: number, height: number, timestamp: string, mime: string, data: string}>} */
@@ -17,6 +19,44 @@
       ? screens[selectedIndex]
       : null,
   );
+
+  // ── Poll controls ─────────────────────────────────────────────────
+  let pollPaused = $state(false);
+  let pollIntervalInput = $state("2000");
+  let pollCmdError = $state(null);
+
+  async function togglePoll() {
+    pollCmdError = null;
+    const ep = pollPaused
+      ? "/api/screen/poll/resume"
+      : "/api/screen/poll/pause";
+    try {
+      const r = await apiFetch(ep, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      pollPaused = !pollPaused;
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  async function applyInterval() {
+    pollCmdError = null;
+    const ms = parseInt(pollIntervalInput, 10);
+    if (!ms || ms < 100) {
+      pollCmdError = "Must be ≥ 100 ms";
+      return;
+    }
+    try {
+      const r = await apiFetch("/api/screen/poll/interval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_ms: ms }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
 
   async function refresh() {
     const start = Date.now();
@@ -41,11 +81,48 @@
     const id = setInterval(refresh, 2000);
     return () => clearInterval(id);
   });
+
+  // Whether commands are actually usable
+  let canCommand = $derived(allowScreenCommands && isAuthenticated);
 </script>
 
 <main id="screens-pane">
   <div class="pane-header">
-    <h2>Monitored Screens</h2>
+    <div class="header-title">
+      <h2>Monitored Screens</h2>
+    </div>
+    {#if allowScreenCommands}
+      {#if !isAuthenticated}
+        <div class="cmd-auth-notice">
+          <span aria-hidden="true">🔒</span> Sign in to use screen commands
+        </div>
+      {:else}
+        <div class="poll-controls">
+          <button
+            class="poll-btn"
+            class:paused={pollPaused}
+            onclick={togglePoll}
+            >{pollPaused ? "▶ Resume Poll" : "⏸ Pause Poll"}</button
+          >
+          <div class="interval-row">
+            <input
+              type="number"
+              class="control-input"
+              style="width:5rem"
+              bind:value={pollIntervalInput}
+              min="100"
+              placeholder="ms"
+            />
+            <button class="poll-btn apply" onclick={applyInterval}
+              >Set ms</button
+            >
+          </div>
+          {#if pollCmdError}
+            <span class="poll-error">{pollCmdError}</span>
+          {/if}
+        </div>
+      {/if}
+    {/if}
   </div>
   <div id="screens" class:single={screens.length === 1}>
     {#each screens as screen, i (screen.monitor_id ?? i)}
@@ -124,6 +201,79 @@
     padding: 1rem 2rem;
     border-bottom: 1px solid var(--border-soft);
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .cmd-auth-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.25rem 0.7rem;
+  }
+  .poll-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .interval-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .poll-btn {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+  }
+  .poll-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-base);
+  }
+  .poll-btn.paused {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.4);
+  }
+  .poll-btn.apply {
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  .poll-error {
+    font-size: 0.68rem;
+    color: #f87171;
+    font-family: ui-monospace, monospace;
+  }
+  .control-input {
+    background: var(--bg-card);
+    color: var(--text-base);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    outline: none;
+    font-family: inherit;
+  }
+  .control-input:focus {
+    border-color: var(--accent);
   }
   .pane-header h2 {
     font-size: 0.78rem;

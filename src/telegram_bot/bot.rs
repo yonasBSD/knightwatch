@@ -16,7 +16,9 @@ use super::{
     },
     utils::escape_mdv2,
 };
-use crate::{prelude::*, process_tracker, system_resources, systemd, utils::recv_or_pending};
+use crate::{
+    prelude::*, process_tracker, screen_capture, system_resources, systemd, utils::recv_or_pending,
+};
 
 pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
     let config = get_config();
@@ -148,8 +150,10 @@ fn main_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("🔧 Systemd"),
             KeyboardButton::new("⚙️ Settings"),
         ],
-        vec![KeyboardButton::new("📋 Help")],
-        vec![KeyboardButton::new("🔑 Authenticate")],
+        vec![
+            KeyboardButton::new("🔑 Authenticate"),
+            KeyboardButton::new("📋 Help"),
+        ],
         vec![KeyboardButton::new("🔴 Stop")],
     ])
     .resize_keyboard()
@@ -196,7 +200,10 @@ fn settings_keyboard() -> KeyboardMarkup {
 
 fn polling_subsystem_keyboard() -> KeyboardMarkup {
     KeyboardMarkup::new([
-        vec![KeyboardButton::new("⏱️ Process Tracker Polling")],
+        vec![
+            KeyboardButton::new("⏱️ Process Tracker Polling"),
+            KeyboardButton::new("⏱️ Screen Capture Polling"),
+        ],
         vec![KeyboardButton::new("❌ Cancel")],
     ])
     .resize_keyboard()
@@ -316,7 +323,7 @@ async fn handle_screenshot(bot: Bot, msg: Message, state: State) -> Result<()> {
     }
     bot.send_message(msg.chat.id, "🖼️ Taking Screenshots...")
         .await?;
-    let images = crate::screen_capture::get_screenshots().await;
+    let images = screen_capture::get_screenshots().await;
     if images.is_empty() {
         bot.send_message(msg.chat.id, "🖼️ No Images were provided.")
             .await?;
@@ -518,6 +525,10 @@ async fn handle_pause_polling(
             Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
+        Subsystem::ScreenCapture => match screen_capture::pause_poll().await {
+            Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
     };
     bot.send_message(msg.chat.id, reply)
         .parse_mode(ParseMode::MarkdownV2)
@@ -539,6 +550,10 @@ async fn handle_resume_polling(
     }
     let reply = match &subsystem {
         Subsystem::ProcessTracker => match process_tracker::resume_poll().await {
+            Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
+        Subsystem::ScreenCapture => match screen_capture::resume_poll().await {
             Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
@@ -592,6 +607,7 @@ async fn handle_poll_interval_input(
             let label = escape_mdv2(subsystem.label());
             let result = match &subsystem {
                 Subsystem::ProcessTracker => process_tracker::set_poll_interval(interval).await,
+                Subsystem::ScreenCapture => screen_capture::set_poll_interval(interval).await,
             };
             match result {
                 Ok(()) => format!("✅ *{label}* poll interval set to `{secs}s`\\."),
@@ -881,17 +897,29 @@ async fn handle_plain_message(
         "⏱️ Process Tracker Polling" => {
             handle_subsystem_polling_menu(bot, msg, state, Subsystem::ProcessTracker).await?
         }
+        "⏱️ Screen Capture Polling" => {
+            handle_subsystem_polling_menu(bot, msg, state, Subsystem::ScreenCapture).await?
+        }
         // Per-subsystem pause
         "⏸️ Pause Process Tracker" => {
             handle_pause_polling(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
+        "⏸️ Pause Screen Capture" => {
+            handle_pause_polling(bot, msg, state, Subsystem::ScreenCapture).await?
         }
         // Per-subsystem resume
         "▶️ Resume Process Tracker" => {
             handle_resume_polling(bot, msg, state, Subsystem::ProcessTracker).await?
         }
+        "▶️ Resume Screen Capture" => {
+            handle_resume_polling(bot, msg, state, Subsystem::ScreenCapture).await?
+        }
         // Per-subsystem set interval
         "🕐 Set Process Tracker Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::ProcessTracker).await?
+        }
+        "🕐 Set Screen Capture Interval" => {
+            handle_poll_interval_prompt(bot, msg, state, Subsystem::ScreenCapture).await?
         }
         "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {

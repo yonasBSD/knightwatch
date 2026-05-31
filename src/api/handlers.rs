@@ -74,7 +74,7 @@ pub fn init_api_server(cancel_token: tokio_util::sync::CancellationToken) -> Res
         return Ok(None);
     }
     init_start_time();
-    let mut app = create_routers(&config, cancel_token.clone());
+    let mut app = create_routers(config, cancel_token.clone());
     #[cfg(debug_assertions)]
     let vite = if !config.args.no_dashboard {
         app = app.fallback(serve_dashboard);

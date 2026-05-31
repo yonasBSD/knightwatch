@@ -21,13 +21,13 @@
   // Covers first load, explicit logout, and 401 expiry.
   let needsLogin = $derived(info !== null && info.auth_enabled && !$auth.token);
 
-  // When allow_process_commands is true but auth_enabled is false,
+  // When an allow command is true but auth_enabled is false,
   // show a login button in the top bar so the user can authenticate
   // only when they need to perform a protected action.
   let showLoginButton = $derived(
     info !== null &&
       !info.auth_enabled &&
-      info.allow_process_commands &&
+      (info.allow_process_commands || info.allow_screen_commands) &&
       !$auth.token,
   );
 
@@ -105,6 +105,7 @@
         system_resources: false,
         systemd: false,
         allow_process_commands: false,
+        allow_screen_commands: false,
       };
     }
 
@@ -259,7 +260,7 @@
         </button>
       {/if}
 
-      {#if info?.auth_enabled || (info?.allow_process_commands && $auth.token)}
+      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && $auth.token)}
         <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
           <span class="logout-icon" aria-hidden="true">⏻</span>
           Sign out
@@ -280,6 +281,8 @@
           bind:status
           bind:statusError
           enabled={!info.blind}
+          allowScreenCommands={info.allow_screen_commands ?? false}
+          isAuthenticated={!!$auth.token}
         />
       </section>
 

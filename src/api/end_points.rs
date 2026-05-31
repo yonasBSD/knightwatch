@@ -9,7 +9,7 @@ use base64::{Engine as _, engine::general_purpose};
 use super::{models::*, utils::*};
 use crate::{
     process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
-    system_resources, systemd,
+    screen_capture, system_resources, systemd,
     utils::now_rfc3339,
 };
 
@@ -48,6 +48,7 @@ pub async fn info() -> Json<InfoResponse> {
         system_resources: args.system_resources,
         systemd: args.systemd,
         allow_process_commands: args.allow_process_commands,
+        allow_screen_commands: args.allow_screen_commands,
     })
 }
 
@@ -89,7 +90,7 @@ pub async fn logout(
 // ---------------------------------------------------------------------------
 
 pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, String)> {
-    let images = crate::screen_capture::get_screenshots().await;
+    let images = screen_capture::get_screenshots().await;
     if images.is_empty() {
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -110,6 +111,37 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Strin
         .collect();
     let count = screens.len();
     Ok(Json(ScreenshotResponse { screens, count }))
+}
+
+// ---------------------------------------------------------------------------
+// Screen capture command endpoints (requires --allow-screen-commands)
+// ---------------------------------------------------------------------------
+
+/// `POST /screen/poll/pause`
+pub async fn screen_capture_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+    screen_capture::pause_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /screen/poll/resume`
+pub async fn screen_capture_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+    screen_capture::resume_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /screen/poll/interval`
+pub async fn screen_capture_set_poll_interval(
+    Json(body): Json<SetPollIntervalRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let interval = tokio::time::Duration::from_millis(body.interval_ms);
+    screen_capture::set_poll_interval(interval)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +290,7 @@ pub async fn untrack_pid(Path(pid): Path<u32>) -> Result<StatusCode, (StatusCode
 }
 
 /// `POST /process/poll/pause`
-pub async fn pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+pub async fn process_tracker_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
     process_tracker::pause_poll()
         .await
         .map_err(internal_server_error)?;
@@ -266,7 +298,7 @@ pub async fn pause_poll() -> Result<StatusCode, (StatusCode, String)> {
 }
 
 /// `POST /process/poll/resume`
-pub async fn resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+pub async fn process_tracker_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
     process_tracker::resume_poll()
         .await
         .map_err(internal_server_error)?;
@@ -274,7 +306,7 @@ pub async fn resume_poll() -> Result<StatusCode, (StatusCode, String)> {
 }
 
 /// `POST /process/poll/interval`
-pub async fn set_poll_interval(
+pub async fn process_tracker_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let interval = tokio::time::Duration::from_millis(body.interval_ms);

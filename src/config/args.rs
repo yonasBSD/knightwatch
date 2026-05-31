@@ -70,6 +70,10 @@ pub struct CliArgs {
     /// Allow process commands (kill, track, etc.)
     #[arg(long, default_value_t = false)]
     pub allow_process_commands: bool,
+
+    /// Allow screen commands (kill, track, etc.)
+    #[arg(long, default_value_t = false)]
+    pub allow_screen_commands: bool,
 }
 
 #[derive(Subcommand, Debug)]

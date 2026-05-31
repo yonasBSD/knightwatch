@@ -13,6 +13,7 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 ## Features
 
 - **Live Screenshots** — Displays one or more connected screens, refreshed every 2 seconds
+- **Screen Commands** — control polling via API or Telegram (requires `--allow-screen-commands`)
 - **Process Monitor** — Tracks a root process and its children with real-time CPU, memory, and state indicators
 - **Process Commands** — Kill, track, untrack processes and control polling via API or Telegram (requires `--allow-process-commands`)
 - **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
@@ -121,8 +122,9 @@ knightwatch --pid <PID> --allow-process-commands
 | `--top-processes` | `false` | Enable top processes tracker |
 | `--limit-processes <N>` | `5` | Number of top processes to track |
 | `--allow-process-commands` | `false` | Enable process command endpoints (kill, track, untrack, poll control) — **always requires authentication** |
+| `--allow-screen-commands` | `false` | Enable screen command endpoints (poll control) — **always requires authentication** |
 
-> **Note:** `--allow-process-commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
+> **Note:** `allowing commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
 
 ### Log Level
 

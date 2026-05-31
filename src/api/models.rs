@@ -20,6 +20,7 @@ pub struct InfoResponse {
     pub systemd: bool,
     pub allow_process_commands: bool,
     pub allow_screen_commands: bool,
+    pub allow_system_resources_commands: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +69,24 @@ pub struct KillProcessRequest {
 #[derive(Deserialize)]
 pub struct SetPollIntervalRequest {
     pub interval_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetThresholdsRequest {
+    pub cpu_warn: f32,
+    pub memory_warn: f32,
+    pub disk_warn: f32,
+    pub battery_low: f32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetRefreshMaskRequest {
+    pub cpu: bool,
+    pub memory: bool,
+    pub disks: bool,
+    pub networks: bool,
+    pub temperatures: bool,
+    pub gpus: bool,
 }
 
 #[cfg(not(debug_assertions))]

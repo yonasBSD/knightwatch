@@ -38,6 +38,11 @@ impl Error {
             "Screen commands are disabled — rerun with --allow-screen-commands".into(),
         )
     }
+    pub fn system_resources_commands_disabled() -> Self {
+        Self::SystemResources(
+            "System resources commands are disabled — rerun with --allow-system-resources-commands".into(),
+        )
+    }
 }
 
 impl std::fmt::Display for Error {

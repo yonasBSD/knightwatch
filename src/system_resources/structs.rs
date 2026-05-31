@@ -353,6 +353,7 @@ pub struct StaticHostInfo {
     pub cpu_arch: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Thresholds {
     pub cpu_warn: f32,
     pub memory_warn: f32,
@@ -367,6 +368,30 @@ impl Default for Thresholds {
             memory_warn: 90.0,
             disk_warn: 90.0,
             battery_low: 15.0,
+        }
+    }
+}
+
+/// Controls which subsystems are collected on each tick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefreshMask {
+    pub cpu: bool,
+    pub memory: bool,
+    pub disks: bool,
+    pub networks: bool,
+    pub temperatures: bool,
+    pub gpus: bool,
+}
+
+impl Default for RefreshMask {
+    fn default() -> Self {
+        Self {
+            cpu: true,
+            memory: true,
+            disks: true,
+            networks: true,
+            temperatures: true,
+            gpus: true,
         }
     }
 }

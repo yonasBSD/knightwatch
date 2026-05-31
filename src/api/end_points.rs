@@ -49,6 +49,7 @@ pub async fn info() -> Json<InfoResponse> {
         systemd: args.systemd,
         allow_process_commands: args.allow_process_commands,
         allow_screen_commands: args.allow_screen_commands,
+        allow_system_resources_commands: args.allow_system_resources_commands,
     })
 }
 
@@ -400,6 +401,73 @@ pub async fn host_info_snapshot() -> Result<Json<system_resources::HostInfo>, (S
 /// Returns the Temperatures Snapshots.
 pub async fn temperatures_snapshots() -> Json<Vec<system_resources::ThermalSnapshot>> {
     Json(system_resources::get_temperatures().await)
+}
+
+// ---------------------------------------------------------------------------
+// System Resources command endpoints (requires --allow-system-resources-commands)
+// ---------------------------------------------------------------------------
+
+/// `POST /resources/thresholds`
+///
+/// Updates the alert thresholds for CPU, memory, disk, and battery.
+pub async fn resources_set_thresholds(
+    Json(body): Json<SetThresholdsRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    system_resources::set_thresholds(system_resources::Thresholds {
+        cpu_warn: body.cpu_warn,
+        memory_warn: body.memory_warn,
+        disk_warn: body.disk_warn,
+        battery_low: body.battery_low,
+    })
+    .await
+    .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /resources/refresh-mask`
+///
+/// Updates the refresh mask that controls which subsystems are collected on each tick.
+pub async fn resources_set_refresh_mask(
+    Json(body): Json<SetRefreshMaskRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    system_resources::set_refresh_mask(system_resources::RefreshMask {
+        cpu: body.cpu,
+        memory: body.memory,
+        disks: body.disks,
+        networks: body.networks,
+        temperatures: body.temperatures,
+        gpus: body.gpus,
+    })
+    .await
+    .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /resources/poll/pause`
+pub async fn resources_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+    system_resources::pause_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /resources/poll/resume`
+pub async fn resources_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+    system_resources::resume_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /resources/poll/interval`
+pub async fn resources_set_poll_interval(
+    Json(body): Json<SetPollIntervalRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let interval = tokio::time::Duration::from_millis(body.interval_ms);
+    system_resources::set_poll_interval(interval)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
 }
 
 // ---------------------------------------------------------------------------

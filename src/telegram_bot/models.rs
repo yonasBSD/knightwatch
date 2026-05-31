@@ -9,6 +9,7 @@ use crate::{
     prelude::*,
     process_tracker::ProcessSignal,
     systemd::UnitActiveState,
+    system_resources::{Thresholds, RefreshMask},
     utils::{format_bytes, format_uptime},
 };
 
@@ -160,7 +161,8 @@ impl Chat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Subsystem {
     ProcessTracker,
-    ScreenCapture
+    ScreenCapture,
+    SystemResources,
 }
 
 impl Subsystem {
@@ -168,6 +170,7 @@ impl Subsystem {
         match self {
             Subsystem::ProcessTracker => "Process Tracker",
             Subsystem::ScreenCapture => "Screen Capture",
+            Subsystem::SystemResources => "System Resources",
         }
     }
 }
@@ -221,6 +224,60 @@ impl ProcessCallbackAction {
                     pid: pid.parse().ok()?,
                     signal,
                 })
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Inline-button callback actions for system resources commands.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SystemResourcesCallbackAction {
+    /// `"sr_set_thresholds:cpu_warn:memory_warn:disk_warn:battery_low"`
+    SetThresholds(Thresholds),
+    /// `"sr_set_refresh_mask:cpu:memory:disks:networks:temperatures:gpus"`
+    SetRefreshMask(RefreshMask),
+}
+
+impl SystemResourcesCallbackAction {
+    pub fn encode(&self) -> String {
+        match self {
+            SystemResourcesCallbackAction::SetThresholds(t) => format!(
+                "sr_set_thresholds:{}:{}:{}:{}",
+                t.cpu_warn, t.memory_warn, t.disk_warn, t.battery_low
+            ),
+            SystemResourcesCallbackAction::SetRefreshMask(m) => format!(
+                "sr_set_refresh_mask:{}:{}:{}:{}:{}:{}",
+                m.cpu as u8,
+                m.memory as u8,
+                m.disks as u8,
+                m.networks as u8,
+                m.temperatures as u8,
+                m.gpus as u8,
+            ),
+        }
+    }
+
+    pub fn decode(s: &str) -> Option<Self> {
+        let parts: Vec<&str> = s.splitn(7, ':').collect();
+        match parts.as_slice() {
+            ["sr_set_thresholds", cpu_warn, memory_warn, disk_warn, battery_low] => {
+                Some(SystemResourcesCallbackAction::SetThresholds(Thresholds {
+                    cpu_warn: cpu_warn.parse().ok()?,
+                    memory_warn: memory_warn.parse().ok()?,
+                    disk_warn: disk_warn.parse().ok()?,
+                    battery_low: battery_low.parse().ok()?,
+                }))
+            }
+            ["sr_set_refresh_mask", cpu, memory, disks, networks, temperatures, gpus] => {
+                Some(SystemResourcesCallbackAction::SetRefreshMask(RefreshMask {
+                    cpu: *cpu != "0",
+                    memory: *memory != "0",
+                    disks: *disks != "0",
+                    networks: *networks != "0",
+                    temperatures: *temperatures != "0",
+                    gpus: *gpus != "0",
+                }))
             }
             _ => None,
         }

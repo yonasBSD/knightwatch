@@ -11,13 +11,17 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     models::{
-        AuthState, ChatState, Command, ProcessCallbackAction, State, Subsystem, TelegramBot,
-        TelegramDisplay,
+        AuthState, ChatState, Command, ProcessCallbackAction, State, Subsystem,
+        SystemResourcesCallbackAction, TelegramBot, TelegramDisplay,
     },
     utils::escape_mdv2,
 };
 use crate::{
-    prelude::*, process_tracker, screen_capture, system_resources, systemd, utils::recv_or_pending,
+    prelude::*,
+    process_tracker, screen_capture,
+    system_resources::{self, RefreshMask, Thresholds},
+    systemd,
+    utils::recv_or_pending,
 };
 
 pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
@@ -204,6 +208,7 @@ fn polling_subsystem_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("⏱️ Process Tracker Polling"),
             KeyboardButton::new("⏱️ Screen Capture Polling"),
         ],
+        vec![KeyboardButton::new("⏱️ System Resources Polling")],
         vec![KeyboardButton::new("❌ Cancel")],
     ])
     .resize_keyboard()
@@ -394,6 +399,45 @@ async fn handle_process(bot: Bot, msg: Message, state: State) -> Result<()> {
     Ok(())
 }
 
+fn system_resources_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new([
+        vec![
+            InlineKeyboardButton::callback(
+                "⚠️ Thresholds: Default",
+                SystemResourcesCallbackAction::SetThresholds(Thresholds::default()).encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⚠️ Thresholds: Strict",
+                SystemResourcesCallbackAction::SetThresholds(Thresholds {
+                    cpu_warn: 75.0,
+                    memory_warn: 75.0,
+                    disk_warn: 75.0,
+                    battery_low: 25.0,
+                })
+                .encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "🔄 Mask: All On",
+                SystemResourcesCallbackAction::SetRefreshMask(RefreshMask::default()).encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "🔄 Mask: CPU+Mem Only",
+                SystemResourcesCallbackAction::SetRefreshMask(RefreshMask {
+                    cpu: true,
+                    memory: true,
+                    disks: false,
+                    networks: false,
+                    temperatures: false,
+                    gpus: false,
+                })
+                .encode(),
+            ),
+        ],
+    ])
+}
+
 async fn handle_system_resources(bot: Bot, msg: Message, state: State) -> Result<()> {
     if !state.is_authorized(msg.chat.id) {
         return send_auth_first_message(bot, msg.chat.id).await;
@@ -405,6 +449,7 @@ async fn handle_system_resources(bot: Bot, msg: Message, state: State) -> Result
     };
     bot.send_message(msg.chat.id, message)
         .parse_mode(ParseMode::MarkdownV2)
+        .reply_markup(system_resources_keyboard())
         .await?;
     Ok(())
 }
@@ -529,6 +574,10 @@ async fn handle_pause_polling(
             Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
+        Subsystem::SystemResources => match system_resources::pause_poll().await {
+            Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
     };
     bot.send_message(msg.chat.id, reply)
         .parse_mode(ParseMode::MarkdownV2)
@@ -554,6 +603,10 @@ async fn handle_resume_polling(
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
         Subsystem::ScreenCapture => match screen_capture::resume_poll().await {
+            Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
+        Subsystem::SystemResources => match system_resources::resume_poll().await {
             Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
@@ -608,6 +661,7 @@ async fn handle_poll_interval_input(
             let result = match &subsystem {
                 Subsystem::ProcessTracker => process_tracker::set_poll_interval(interval).await,
                 Subsystem::ScreenCapture => screen_capture::set_poll_interval(interval).await,
+                Subsystem::SystemResources => system_resources::set_poll_interval(interval).await,
             };
             match result {
                 Ok(()) => format!("✅ *{label}* poll interval set to `{secs}s`\\."),
@@ -647,6 +701,9 @@ async fn handle_callback_query(bot: Bot, q: CallbackQuery, state: State) -> Resu
     };
     if let Some(action) = ProcessCallbackAction::decode(data) {
         return handle_process_callback(bot, q, chat_id, action).await;
+    }
+    if let Some(action) = SystemResourcesCallbackAction::decode(data) {
+        return handle_system_resources_callback(bot, chat_id, action).await;
     }
     bot.send_message(chat_id, "❓ Unknown action\\.").await?;
     Ok(())
@@ -713,6 +770,34 @@ async fn handle_process_callback(
             let reply = match process_tracker::kill_process(pid, signal).await {
                 Ok(true) => format!("✅ Signal sent to PID `{pid}`\\."),
                 Ok(false) => format!("⚠️ OS rejected signal for PID `{pid}`\\."),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_system_resources_callback(
+    bot: Bot,
+    chat_id: ChatId,
+    action: SystemResourcesCallbackAction,
+) -> Result<()> {
+    match action {
+        SystemResourcesCallbackAction::SetThresholds(thresholds) => {
+            let reply = match system_resources::set_thresholds(thresholds).await {
+                Ok(()) => "✅ Alert thresholds updated\\.".to_string(),
+                Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+            };
+            bot.send_message(chat_id, reply)
+                .parse_mode(ParseMode::MarkdownV2)
+                .await?;
+        }
+        SystemResourcesCallbackAction::SetRefreshMask(mask) => {
+            let reply = match system_resources::set_refresh_mask(mask).await {
+                Ok(()) => "✅ Refresh mask updated\\.".to_string(),
                 Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
             };
             bot.send_message(chat_id, reply)
@@ -900,12 +985,18 @@ async fn handle_plain_message(
         "⏱️ Screen Capture Polling" => {
             handle_subsystem_polling_menu(bot, msg, state, Subsystem::ScreenCapture).await?
         }
+        "⏱️ System Resources Polling" => {
+            handle_subsystem_polling_menu(bot, msg, state, Subsystem::SystemResources).await?
+        }
         // Per-subsystem pause
         "⏸️ Pause Process Tracker" => {
             handle_pause_polling(bot, msg, state, Subsystem::ProcessTracker).await?
         }
         "⏸️ Pause Screen Capture" => {
             handle_pause_polling(bot, msg, state, Subsystem::ScreenCapture).await?
+        }
+        "⏸️ Pause System Resources" => {
+            handle_pause_polling(bot, msg, state, Subsystem::SystemResources).await?
         }
         // Per-subsystem resume
         "▶️ Resume Process Tracker" => {
@@ -914,12 +1005,18 @@ async fn handle_plain_message(
         "▶️ Resume Screen Capture" => {
             handle_resume_polling(bot, msg, state, Subsystem::ScreenCapture).await?
         }
+        "▶️ Resume System Resources" => {
+            handle_resume_polling(bot, msg, state, Subsystem::SystemResources).await?
+        }
         // Per-subsystem set interval
         "🕐 Set Process Tracker Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::ProcessTracker).await?
         }
         "🕐 Set Screen Capture Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::ScreenCapture).await?
+        }
+        "🕐 Set System Resources Interval" => {
+            handle_poll_interval_prompt(bot, msg, state, Subsystem::SystemResources).await?
         }
         "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {

@@ -13,16 +13,21 @@ use crate::prelude::*;
 pub struct SystemResourcesChannels {
     pub query_tx: mpsc::Sender<SystemResourcesQuery>,
     pub query_rx: Option<mpsc::Receiver<SystemResourcesQuery>>,
+    pub command_tx: mpsc::Sender<SystemResourcesCommand>,
+    pub command_rx: Option<mpsc::Receiver<SystemResourcesCommand>>,
     pub event_tx: broadcast::Sender<SystemResourcesEvent>,
 }
 
 impl SystemResourcesChannels {
     pub fn new() -> Self {
         let (query_tx, query_rx) = mpsc::channel(1024);
+        let (command_tx, command_rx) = mpsc::channel(256);
         let (event_tx, _) = broadcast::channel(64);
         Self {
             query_tx,
             query_rx: Some(query_rx),
+            command_tx,
+            command_rx: Some(command_rx),
             event_tx,
         }
     }
@@ -31,6 +36,12 @@ impl SystemResourcesChannels {
         self.query_rx
             .take()
             .ok_or_else(|| Error::SystemResources("Query receiver already taken".into()))
+    }
+
+    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<SystemResourcesCommand>> {
+        self.command_rx
+            .take()
+            .ok_or_else(|| Error::SystemResources("Command receiver already taken".into()))
     }
 }
 
@@ -61,6 +72,7 @@ struct SystemResources {
     thresholds: Thresholds,
     first_tick: bool,
     static_host_info: StaticHostInfo,
+    refresh_mask: RefreshMask,
     uptime_baseline: u64,
     uptime_started: std::time::Instant,
 }
@@ -85,6 +97,7 @@ impl SystemResources {
             thresholds: Thresholds::default(),
             first_tick: true,
             static_host_info: super::utils::get_static_host_info(),
+            refresh_mask: RefreshMask::default(),
             uptime_baseline: System::uptime(),
             uptime_started: std::time::Instant::now(),
         }
@@ -106,11 +119,18 @@ impl SystemResources {
             .channels
             .take_query_rx()
             .expect("Failed to take query receiver");
+        let mut command_rx = self
+            .channels
+            .take_command_rx()
+            .expect("Failed to take command receiver");
         self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
         loop {
             tokio::select! {
                 Some(query) = query_rx.recv() => {
                     self.handle_query(query);
+                }
+                Some(command) = command_rx.recv() => {
+                    self.handle_command(command);
                 }
                 _ = async { self.poll_interval_timer.as_mut().unwrap().tick().await }, if self.poll_interval_timer.is_some() => {
                     self.handle_tick().await;
@@ -184,6 +204,48 @@ impl SystemResources {
         }
     }
 
+    fn handle_command(&mut self, command: SystemResourcesCommand) {
+        match command {
+            SystemResourcesCommand::SetThresholds {
+                thresholds,
+                response,
+            } => {
+                self.thresholds = thresholds;
+                info!("thresholds updated");
+                let _ = response.send(Ok(()));
+            }
+            SystemResourcesCommand::SetRefreshMask { mask, response } => {
+                self.refresh_mask = mask;
+                info!(
+                    cpu = self.refresh_mask.cpu,
+                    memory = self.refresh_mask.memory,
+                    disks = self.refresh_mask.disks,
+                    networks = self.refresh_mask.networks,
+                    temperatures = self.refresh_mask.temperatures,
+                    gpus = self.refresh_mask.gpus,
+                    "refresh mask updated"
+                );
+                let _ = response.send(Ok(()));
+            }
+            SystemResourcesCommand::SetPollInterval { interval, response } => {
+                self.poll_interval = interval;
+                self.poll_interval_timer = Some(tokio::time::interval(interval));
+                info!(ms = interval.as_millis(), "poll interval updated");
+                let _ = response.send(Ok(()));
+            }
+            SystemResourcesCommand::PausePoll { response } => {
+                self.poll_interval_timer = None;
+                info!("polling paused");
+                let _ = response.send(Ok(()));
+            }
+            SystemResourcesCommand::ResumePoll { response } => {
+                self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
+                info!("polling resumed");
+                let _ = response.send(Ok(()));
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Tick — refresh sysinfo, build snapshot, emit events
     // -----------------------------------------------------------------------
@@ -253,11 +315,21 @@ impl SystemResources {
 
     fn refresh_all(&mut self) {
         // sysinfo requires two CPU ticks to produce non-zero usage numbers.
-        self.sys.refresh_cpu_specifics(CpuRefreshKind::everything());
-        self.sys.refresh_memory();
-        self.disks.refresh(false);
-        self.networks.refresh(false);
-        self.components.refresh(false);
+        if self.refresh_mask.cpu {
+            self.sys.refresh_cpu_specifics(CpuRefreshKind::everything());
+        }
+        if self.refresh_mask.memory {
+            self.sys.refresh_memory();
+        }
+        if self.refresh_mask.disks {
+            self.disks.refresh(false);
+        }
+        if self.refresh_mask.networks {
+            self.networks.refresh(false);
+        }
+        if self.refresh_mask.temperatures {
+            self.components.refresh(false);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -380,9 +452,12 @@ pub static SYSTEM_RESOURCES_QUERY_SENDER: OnceLock<mpsc::Sender<SystemResourcesQ
     OnceLock::new();
 pub static SYSTEM_RESOURCES_EVENT_SENDER: OnceLock<broadcast::Sender<SystemResourcesEvent>> =
     OnceLock::new();
+pub static SYSTEM_RESOURCES_COMMAND_SENDER: OnceLock<mpsc::Sender<SystemResourcesCommand>> =
+    OnceLock::new();
 
 pub fn init_system_resources() {
-    if !get_config().args.system_resources {
+    let config = get_config();
+    if !config.args.system_resources {
         return;
     }
     let resources = SystemResources::new();
@@ -392,6 +467,11 @@ pub fn init_system_resources() {
     SYSTEM_RESOURCES_EVENT_SENDER
         .set(resources.channels.event_tx.clone())
         .unwrap();
+    if config.args.allow_system_resources_commands {
+        SYSTEM_RESOURCES_COMMAND_SENDER
+            .set(resources.channels.command_tx.clone())
+            .unwrap();
+    }
     tokio::spawn(async move {
         if let Err(e) = resources.start_resource_loop().await {
             error!(?e, "system resources loop exited with error");

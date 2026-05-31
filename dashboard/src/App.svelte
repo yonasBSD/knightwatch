@@ -27,7 +27,9 @@
   let showLoginButton = $derived(
     info !== null &&
       !info.auth_enabled &&
-      (info.allow_process_commands || info.allow_screen_commands) &&
+      (info.allow_process_commands ||
+        info.allow_screen_commands ||
+        info.allow_system_resources_commands) &&
       !$auth.token,
   );
 
@@ -106,6 +108,7 @@
         systemd: false,
         allow_process_commands: false,
         allow_screen_commands: false,
+        allow_system_resources_commands: false,
       };
     }
 
@@ -260,7 +263,7 @@
         </button>
       {/if}
 
-      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && $auth.token)}
+      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && info?.allow_system_resources_commands && $auth.token)}
         <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
           <span class="logout-icon" aria-hidden="true">⏻</span>
           Sign out
@@ -294,6 +297,9 @@
         <SystemResourcesPane
           active={activeTab === "system"}
           enabled={info.system_resources}
+          allowSystemResourcesCommands={info.allow_system_resources_commands ??
+            false}
+          isAuthenticated={!!$auth.token}
         />
       </section>
 

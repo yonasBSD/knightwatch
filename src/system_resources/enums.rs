@@ -2,6 +2,7 @@ use serde::Serialize;
 use tokio::sync::oneshot;
 
 use super::structs::*;
+use crate::prelude::Result;
 
 #[derive(Debug, Clone, Serialize)]
 pub enum SystemResourcesEvent {
@@ -76,6 +77,34 @@ pub enum SystemResourcesQuery {
     /// Returns thermal readings (may be empty if unsupported).
     Temperatures {
         response: oneshot::Sender<Vec<ThermalSnapshot>>,
+    },
+}
+
+#[derive(Debug)]
+pub enum SystemResourcesCommand {
+    /// Replace all alert thresholds at once.
+    SetThresholds {
+        thresholds: Thresholds,
+        response: oneshot::Sender<Result<()>>,
+    },
+
+    /// Control which subsystems are refreshed each tick.
+    SetRefreshMask {
+        mask: RefreshMask,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Replace the polling interval and restart the tick timer immediately.
+    SetPollInterval {
+        interval: std::time::Duration,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Stop emitting ticks; the tracker keeps running and still handles queries/commands.
+    PausePoll {
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Resume ticking at the current poll interval.
+    ResumePoll {
+        response: oneshot::Sender<Result<()>>,
     },
 }
 

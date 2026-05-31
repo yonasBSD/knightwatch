@@ -1,15 +1,17 @@
 <script>
-  import { onMount, onDestroy } from "svelte";
   import { formatBytes, formatUptime } from "../utils/format.js";
   import { apiFetch } from "../api.js";
 
-  let { active, enabled } = $props();
+  let {
+    active,
+    enabled,
+    allowSystemResourcesCommands = false,
+    isAuthenticated = false,
+  } = $props();
 
   let snap = $state(null);
-  let interval = null;
 
   async function refresh() {
-    if (!enabled) return;
     try {
       const r = await apiFetch("/api/system");
       if (!r.ok) throw new Error("HTTP error");
@@ -17,13 +19,119 @@
     } catch {}
   }
 
-  onMount(() => {
+  // Use $effect so polling starts/stops reactively based on `enabled`
+  $effect(() => {
     if (!enabled) return;
     refresh();
-    interval = setInterval(refresh, 2000);
+    const id = setInterval(refresh, 2000);
+    return () => clearInterval(id);
   });
 
-  onDestroy(() => clearInterval(interval));
+  // Whether commands are actually usable
+  let canCommand = $derived(allowSystemResourcesCommands && isAuthenticated);
+
+  // ── Poll controls ─────────────────────────────────────────────────
+  let pollPaused = $state(false);
+  let pollIntervalInput = $state("2000");
+  let pollCmdError = $state(null);
+
+  async function togglePoll() {
+    pollCmdError = null;
+    const ep = pollPaused
+      ? "/api/resources/poll/resume"
+      : "/api/resources/poll/pause";
+    try {
+      const r = await apiFetch(ep, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      pollPaused = !pollPaused;
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  async function applyInterval() {
+    pollCmdError = null;
+    const ms = parseInt(pollIntervalInput, 10);
+    if (!ms || ms < 100) {
+      pollCmdError = "Must be ≥ 100 ms";
+      return;
+    }
+    try {
+      const r = await apiFetch("/api/resources/poll/interval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_ms: ms }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  // ── Thresholds ────────────────────────────────────────────────────
+  let thresholds = $state({
+    cpu_warn: 75,
+    memory_warn: 75,
+    disk_warn: 80,
+    battery_low: 20,
+  });
+  let thresholdError = $state(null);
+  let thresholdSuccess = $state(false);
+  let showThresholds = $state(false);
+
+  async function applyThresholds() {
+    thresholdError = null;
+    thresholdSuccess = false;
+    const { cpu_warn, memory_warn, disk_warn, battery_low } = thresholds;
+    for (const v of [cpu_warn, memory_warn, disk_warn, battery_low]) {
+      if (v < 0 || v > 100) {
+        thresholdError = "All values must be 0–100";
+        return;
+      }
+    }
+    try {
+      const r = await apiFetch("/api/resources/thresholds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpu_warn, memory_warn, disk_warn, battery_low }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      thresholdSuccess = true;
+      setTimeout(() => (thresholdSuccess = false), 2000);
+    } catch (e) {
+      thresholdError = e.message;
+    }
+  }
+
+  // ── Refresh mask ──────────────────────────────────────────────────
+  let mask = $state({
+    cpu: true,
+    memory: true,
+    disks: true,
+    networks: true,
+    temperatures: true,
+    gpus: true,
+  });
+  let maskError = $state(null);
+  let maskSuccess = $state(false);
+  let showMask = $state(false);
+
+  async function applyMask() {
+    maskError = null;
+    maskSuccess = false;
+    try {
+      const r = await apiFetch("/api/resources/refresh-mask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mask),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      maskSuccess = true;
+      setTimeout(() => (maskSuccess = false), 2000);
+    } catch (e) {
+      maskError = e.message;
+    }
+  }
 
   // ── Derived helpers ───────────────────────────────────────────────
   const MAX_CORE_H = 32;
@@ -54,8 +162,93 @@
 </script>
 
 <div class="pane-header">
-  <h2>System</h2>
+  <div class="header-title">
+    <h2>System</h2>
+  </div>
+  {#if allowSystemResourcesCommands}
+    {#if !isAuthenticated}
+      <div class="cmd-auth-notice">
+        <span aria-hidden="true">🔒</span> Sign in to use resource commands
+      </div>
+    {:else}
+      <div class="cmd-controls">
+        <div class="poll-controls">
+          <button
+            class="poll-btn"
+            class:paused={pollPaused}
+            onclick={togglePoll}
+            >{pollPaused ? "▶ Resume Poll" : "⏸ Pause Poll"}</button
+          >
+          <div class="interval-row">
+            <input
+              type="number"
+              class="control-input"
+              style="width:5rem"
+              bind:value={pollIntervalInput}
+              min="100"
+              placeholder="ms"
+            />
+            <button class="poll-btn apply" onclick={applyInterval}
+              >Set ms</button
+            >
+          </div>
+        </div>
+        <button
+          class="poll-btn"
+          onclick={() => (showThresholds = !showThresholds)}
+          >⚠ Thresholds</button
+        >
+        <button class="poll-btn" onclick={() => (showMask = !showMask)}
+          >⚙ Refresh Mask</button
+        >
+        {#if pollCmdError}
+          <span class="poll-error">{pollCmdError}</span>
+        {/if}
+      </div>
+    {/if}
+  {/if}
 </div>
+
+{#if canCommand && showThresholds}
+  <div class="sub-panel">
+    <div class="sub-panel-title">Alert Thresholds (%)</div>
+    <div class="sub-panel-row">
+      {#each [["CPU warn", "cpu_warn"], ["Memory warn", "memory_warn"], ["Disk warn", "disk_warn"], ["Battery low", "battery_low"]] as [label, key]}
+        <label class="sub-label">
+          {label}
+          <input
+            type="number"
+            class="control-input"
+            style="width:4rem"
+            bind:value={thresholds[key]}
+            min="0"
+            max="100"
+          />
+        </label>
+      {/each}
+      <button class="poll-btn apply" onclick={applyThresholds}>Apply</button>
+      {#if thresholdSuccess}<span class="poll-ok">✓ Saved</span>{/if}
+      {#if thresholdError}<span class="poll-error">{thresholdError}</span>{/if}
+    </div>
+  </div>
+{/if}
+
+{#if canCommand && showMask}
+  <div class="sub-panel">
+    <div class="sub-panel-title">Refresh Mask</div>
+    <div class="sub-panel-row">
+      {#each Object.keys(mask) as key}
+        <label class="mask-label">
+          <input type="checkbox" bind:checked={mask[key]} />
+          {key}
+        </label>
+      {/each}
+      <button class="poll-btn apply" onclick={applyMask}>Apply</button>
+      {#if maskSuccess}<span class="poll-ok">✓ Saved</span>{/if}
+      {#if maskError}<span class="poll-error">{maskError}</span>{/if}
+    </div>
+  </div>
+{/if}
 
 <div id="system-panel">
   {#if snap}
@@ -453,6 +646,129 @@
     padding: 1rem 2rem;
     border-bottom: 1px solid var(--border-soft);
     flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .cmd-auth-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.25rem 0.7rem;
+  }
+  .cmd-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .poll-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .interval-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .poll-btn {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+  }
+  .poll-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-base);
+  }
+  .poll-btn.paused {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.4);
+  }
+  .poll-btn.apply {
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  .poll-error {
+    font-size: 0.68rem;
+    color: #f87171;
+    font-family: ui-monospace, monospace;
+  }
+  .poll-ok {
+    font-size: 0.68rem;
+    color: #34d399;
+    font-family: ui-monospace, monospace;
+  }
+  .control-input {
+    background: var(--bg-card);
+    color: var(--text-base);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    outline: none;
+    font-family: inherit;
+  }
+  .control-input:focus {
+    border-color: var(--accent);
+  }
+  .sub-panel {
+    padding: 0.6rem 2rem;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+  }
+  .sub-panel-title {
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.4rem;
+  }
+  .sub-panel-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .sub-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    font-family: inherit;
+    cursor: default;
+  }
+  .mask-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    font-family: inherit;
+    cursor: pointer;
+    text-transform: capitalize;
   }
   .pane-header h2 {
     font-size: 0.78rem;

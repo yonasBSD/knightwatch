@@ -80,10 +80,24 @@ fn create_screen_commands_router() -> Router {
         .layer(middleware::from_fn(auth_middleware))
 }
 
+fn create_sr_commands_router() -> Router {
+    Router::new()
+        .route("/resources/thresholds", post(resources_set_thresholds))
+        .route("/resources/refresh-mask", post(resources_set_refresh_mask))
+        .route("/resources/poll/pause", post(resources_pause_poll))
+        .route("/resources/poll/resume", post(resources_resume_poll))
+        .route(
+            "/resources/poll/interval",
+            post(resources_set_poll_interval),
+        )
+        .layer(middleware::from_fn(auth_middleware))
+}
+
 fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
     config.args.enable_auth
         || config.args.allow_process_commands
         || (!config.args.blind && config.args.allow_screen_commands)
+        || config.args.allow_system_resources_commands
 }
 
 pub fn create_routers(
@@ -103,6 +117,9 @@ pub fn create_routers(
     }
     if !config.args.blind && config.args.allow_screen_commands {
         app = app.nest("/api", create_screen_commands_router());
+    }
+    if config.args.allow_system_resources_commands {
+        app = app.nest("/api", create_sr_commands_router());
     }
     app
 }

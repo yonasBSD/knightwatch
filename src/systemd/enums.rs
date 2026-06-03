@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 
 use super::structs::{SystemdSnapshot, UnitSnapshot};
-use crate::prelude::warn;
+use crate::prelude::{Result, warn};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -101,15 +102,15 @@ impl UnitType {
 
 pub enum SystemdQuery {
     Snapshot {
-        response: tokio::sync::oneshot::Sender<Option<SystemdSnapshot>>,
+        response: oneshot::Sender<Option<SystemdSnapshot>>,
     },
     Unit {
         unit_name: String,
-        response: tokio::sync::oneshot::Sender<Option<UnitSnapshot>>,
+        response: oneshot::Sender<Option<UnitSnapshot>>,
     },
     ByActiveState {
         state: UnitActiveState,
-        response: tokio::sync::oneshot::Sender<Vec<UnitSnapshot>>,
+        response: oneshot::Sender<Vec<UnitSnapshot>>,
     },
 }
 
@@ -130,4 +131,23 @@ pub enum SystemdEvent {
     UnitAppeared { unit: UnitSnapshot },
     /// A unit disappeared entirely (unloaded/transient gone)
     UnitDisappeared { unit_name: String },
+}
+
+/// Mutating commands that alter systemd state.
+/// These require `&mut self` and travel on a separate channel from read-only queries.
+#[derive(Debug)]
+pub enum SystemdCommand {
+    /// Replace the polling interval and restart the tick timer immediately.
+    SetPollInterval {
+        interval: std::time::Duration,
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Stop emitting ticks; the systemd keeps running and still handles queries/commands.
+    PausePoll {
+        response: oneshot::Sender<Result<()>>,
+    },
+    /// Resume ticking at the current poll interval.
+    ResumePoll {
+        response: oneshot::Sender<Result<()>>,
+    },
 }

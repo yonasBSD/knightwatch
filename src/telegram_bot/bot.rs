@@ -208,7 +208,10 @@ fn polling_subsystem_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("⏱️ Process Tracker Polling"),
             KeyboardButton::new("⏱️ Screen Capture Polling"),
         ],
-        vec![KeyboardButton::new("⏱️ System Resources Polling")],
+        vec![
+            KeyboardButton::new("⏱️ System Resources Polling"),
+            KeyboardButton::new("⏱️ Systemd Polling"),
+        ],
         vec![KeyboardButton::new("❌ Cancel")],
     ])
     .resize_keyboard()
@@ -578,6 +581,10 @@ async fn handle_pause_polling(
             Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
+        Subsystem::Systemd => match systemd::pause_poll().await {
+            Ok(()) => format!("⏸️ {} polling paused\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
     };
     bot.send_message(msg.chat.id, reply)
         .parse_mode(ParseMode::MarkdownV2)
@@ -607,6 +614,10 @@ async fn handle_resume_polling(
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
         Subsystem::SystemResources => match system_resources::resume_poll().await {
+            Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
+            Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
+        },
+        Subsystem::Systemd => match systemd::resume_poll().await {
             Ok(()) => format!("▶️ {} polling resumed\\.", escape_mdv2(subsystem.label())),
             Err(e) => format!("❌ Failed: `{}`", escape_mdv2(&e.to_string())),
         },
@@ -662,6 +673,7 @@ async fn handle_poll_interval_input(
                 Subsystem::ProcessTracker => process_tracker::set_poll_interval(interval).await,
                 Subsystem::ScreenCapture => screen_capture::set_poll_interval(interval).await,
                 Subsystem::SystemResources => system_resources::set_poll_interval(interval).await,
+                Subsystem::Systemd => systemd::set_poll_interval(interval).await,
             };
             match result {
                 Ok(()) => format!("✅ *{label}* poll interval set to `{secs}s`\\."),
@@ -988,6 +1000,9 @@ async fn handle_plain_message(
         "⏱️ System Resources Polling" => {
             handle_subsystem_polling_menu(bot, msg, state, Subsystem::SystemResources).await?
         }
+        "⏱️ Systemd Polling" => {
+            handle_subsystem_polling_menu(bot, msg, state, Subsystem::Systemd).await?
+        }
         // Per-subsystem pause
         "⏸️ Pause Process Tracker" => {
             handle_pause_polling(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -998,6 +1013,7 @@ async fn handle_plain_message(
         "⏸️ Pause System Resources" => {
             handle_pause_polling(bot, msg, state, Subsystem::SystemResources).await?
         }
+        "⏸️ Pause Systemd" => handle_pause_polling(bot, msg, state, Subsystem::Systemd).await?,
         // Per-subsystem resume
         "▶️ Resume Process Tracker" => {
             handle_resume_polling(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -1008,6 +1024,9 @@ async fn handle_plain_message(
         "▶️ Resume System Resources" => {
             handle_resume_polling(bot, msg, state, Subsystem::SystemResources).await?
         }
+        "▶️ Resume Systemd" => {
+            handle_resume_polling(bot, msg, state, Subsystem::Systemd).await?
+        }
         // Per-subsystem set interval
         "🕐 Set Process Tracker Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -1017,6 +1036,9 @@ async fn handle_plain_message(
         }
         "🕐 Set System Resources Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::SystemResources).await?
+        }
+        "🕐 Set Systemd Interval" => {
+            handle_poll_interval_prompt(bot, msg, state, Subsystem::Systemd).await?
         }
         "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {

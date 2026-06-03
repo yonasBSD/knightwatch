@@ -8,8 +8,8 @@ use super::utils::escape_mdv2;
 use crate::{
     prelude::*,
     process_tracker::ProcessSignal,
-    systemd::UnitActiveState,
-    system_resources::{Thresholds, RefreshMask},
+    system_resources::{RefreshMask, Thresholds},
+    systemd::{self, UnitActiveState},
     utils::{format_bytes, format_uptime},
 };
 
@@ -163,6 +163,7 @@ pub enum Subsystem {
     ProcessTracker,
     ScreenCapture,
     SystemResources,
+    Systemd,
 }
 
 impl Subsystem {
@@ -171,6 +172,7 @@ impl Subsystem {
             Subsystem::ProcessTracker => "Process Tracker",
             Subsystem::ScreenCapture => "Screen Capture",
             Subsystem::SystemResources => "System Resources",
+            Subsystem::Systemd => "Systemd",
         }
     }
 }
@@ -590,7 +592,7 @@ fn unit_state_emoji(state: &UnitActiveState) -> &'static str {
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::systemd::UnitSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, systemd::UnitSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let u = self.0;
         let emoji = unit_state_emoji(&u.active_state);
@@ -628,7 +630,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::systemd::UnitSnapshot>
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::systemd::SystemdSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, systemd::SystemdSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
 

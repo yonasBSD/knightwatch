@@ -94,6 +94,14 @@ fn create_sr_commands_router() -> Router {
         .layer(middleware::from_fn(auth_middleware))
 }
 
+fn create_systemd_commands_router() -> Router {
+    Router::new()
+        .route("/systemd/poll/pause", post(systemd_pause_poll))
+        .route("/systemd/poll/resume", post(systemd_resume_poll))
+        .route("/systemd/poll/interval", post(systemd_set_poll_interval))
+        .layer(middleware::from_fn(auth_middleware))
+}
+
 fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
     config.args.enable_auth
         || config.args.allow_process_commands
@@ -105,6 +113,7 @@ fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
             screen_check
         }
         || config.args.allow_system_resources_commands
+        || config.args.allow_systemd_commands
 }
 
 pub fn create_routers(
@@ -128,6 +137,9 @@ pub fn create_routers(
     }
     if config.args.allow_system_resources_commands {
         app = app.nest("/api", create_sr_commands_router());
+    }
+    if config.args.allow_systemd_commands {
+        app = app.nest("/api", create_systemd_commands_router())
     }
     app
 }

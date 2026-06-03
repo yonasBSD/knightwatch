@@ -9,7 +9,6 @@ pub enum Error {
     Config(String),
     ProcessTracker(String),
     SystemResources(String),
-    #[cfg(target_os = "linux")]
     Systemd(String),
     Other(String),
     TelegramBot(String),
@@ -41,6 +40,9 @@ impl Error {
                 .into(),
         )
     }
+    pub fn systemd_commands_disabled() -> Self {
+        Self::Systemd("Systemd commands are disabled — rerun with --allow-systemd-commands".into())
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -53,11 +55,8 @@ impl std::fmt::Display for Error {
             | Error::TelegramBot(msg)
             | Error::Screen(msg)
             | Error::SystemResources(msg)
+            | Error::Systemd(msg)
             | Error::ProcessTracker(msg) => {
-                write!(f, "{msg}")
-            }
-            #[cfg(target_os = "linux")]
-            Error::Systemd(msg) => {
                 write!(f, "{msg}")
             }
         }

@@ -78,6 +78,10 @@ pub struct CliArgs {
     /// Allow system_resources commands (kill, track, etc.)
     #[arg(long, default_value_t = false)]
     pub allow_system_resources_commands: bool,
+
+    /// Allow systemd commands
+    #[arg(long, default_value_t = false)]
+    pub allow_systemd_commands: bool,
 }
 
 #[derive(Subcommand, Debug)]

@@ -2,7 +2,12 @@
   import { onMount, onDestroy } from "svelte";
   import { apiFetch } from "../api.js";
 
-  let { active, enabled } = $props();
+  let {
+    active,
+    enabled,
+    allowSystemdCommands = false,
+    isAuthenticated = false,
+  } = $props();
 
   // ── State ─────────────────────────────────────────────────────────
   let snap = $state(null); // SystemdSnapshot
@@ -15,11 +20,16 @@
   let filterType = $state("all"); // "all" | "service" | "socket" | "timer" | "mount" | "target"
   let search = $state("");
 
+  // ── Poll / command controls ────────────────────────────────────────
+  let pollPaused = $state(false);
+  let pollIntervalInput = $state("3000");
+  let pollCmdError = $state(null);
+
   let interval = null;
 
   // ── Fetch ─────────────────────────────────────────────────────────
   async function refresh() {
-    if (!enabled) return;
+    if (!enabled || pollPaused) return;
     try {
       const [snapRes, failedRes] = await Promise.all([
         apiFetch("/api/systemd"),
@@ -45,6 +55,43 @@
     filterState = state;
     selectedUnit = null;
   }
+
+  // ── Poll commands ──────────────────────────────────────────────────
+  async function togglePoll() {
+    pollCmdError = null;
+    const ep = pollPaused
+      ? "/api/systemd/poll/resume"
+      : "/api/systemd/poll/pause";
+    try {
+      const r = await apiFetch(ep, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+      pollPaused = !pollPaused;
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  async function applyInterval() {
+    pollCmdError = null;
+    const ms = parseInt(pollIntervalInput, 10);
+    if (!ms || ms < 100) {
+      pollCmdError = "Must be ≥ 100 ms";
+      return;
+    }
+    try {
+      const r = await apiFetch("/api/systemd/poll/interval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interval_ms: ms }),
+      });
+      if (!r.ok) throw new Error((await r.json()).message ?? "failed");
+    } catch (e) {
+      pollCmdError = e.message;
+    }
+  }
+
+  // Whether commands are actually usable
+  let canCommand = $derived(allowSystemdCommands && isAuthenticated);
 
   onMount(() => {
     if (!enabled) return;
@@ -78,11 +125,11 @@
         list = list.filter(
           (u) =>
             u.unit_name.toLowerCase().includes(q) ||
-            u.description.toLowerCase().includes(q)
+            u.description.toLowerCase().includes(q),
         );
       }
       return list;
-    })()
+    })(),
   );
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -150,39 +197,76 @@
 </script>
 
 <div class="pane-header">
-  <h2>Systemd</h2>
-  {#if snap}
-    <div class="header-stats">
-      <button
-        class="stat-chip"
-        class:chip-active={filterState === "active"}
-        onclick={() => loadByState(filterState === "active" ? "all" : "active")}
-      >
-        <span class="dot dot-active"></span>
-        {snap.active_count} active
-      </button>
-      <button
-        class="stat-chip"
-        class:chip-inactive={filterState === "inactive"}
-        onclick={() =>
-          loadByState(filterState === "inactive" ? "all" : "inactive")}
-      >
-        <span class="dot dot-inactive"></span>
-        {snap.inactive_count} inactive
-      </button>
-      {#if snap.failed_count > 0}
+  <div class="header-title">
+    <h2>Systemd</h2>
+  </div>
+  <div class="header-right">
+    {#if snap}
+      <div class="header-stats">
         <button
-          class="stat-chip chip-failed-always"
-          class:chip-failed={filterState === "failed"}
+          class="stat-chip"
+          class:chip-active={filterState === "active"}
           onclick={() =>
-            loadByState(filterState === "failed" ? "all" : "failed")}
+            loadByState(filterState === "active" ? "all" : "active")}
         >
-          <span class="dot dot-failed"></span>
-          {snap.failed_count} failed
+          <span class="dot dot-active"></span>
+          {snap.active_count} active
         </button>
+        <button
+          class="stat-chip"
+          class:chip-inactive={filterState === "inactive"}
+          onclick={() =>
+            loadByState(filterState === "inactive" ? "all" : "inactive")}
+        >
+          <span class="dot dot-inactive"></span>
+          {snap.inactive_count} inactive
+        </button>
+        {#if snap.failed_count > 0}
+          <button
+            class="stat-chip chip-failed-always"
+            class:chip-failed={filterState === "failed"}
+            onclick={() =>
+              loadByState(filterState === "failed" ? "all" : "failed")}
+          >
+            <span class="dot dot-failed"></span>
+            {snap.failed_count} failed
+          </button>
+        {/if}
+      </div>
+    {/if}
+    {#if allowSystemdCommands}
+      {#if !isAuthenticated}
+        <div class="cmd-auth-notice">
+          <span aria-hidden="true">🔒</span> Sign in to use systemd commands
+        </div>
+      {:else}
+        <div class="poll-controls">
+          <button
+            class="poll-btn"
+            class:paused={pollPaused}
+            onclick={togglePoll}
+            >{pollPaused ? "▶ Resume Poll" : "⏸ Pause Poll"}</button
+          >
+          <div class="interval-row">
+            <input
+              type="number"
+              class="control-input"
+              style="width:5rem"
+              bind:value={pollIntervalInput}
+              min="100"
+              placeholder="ms"
+            />
+            <button class="poll-btn apply" onclick={applyInterval}
+              >Set ms</button
+            >
+          </div>
+          {#if pollCmdError}
+            <span class="poll-error">{pollCmdError}</span>
+          {/if}
+        </div>
       {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <div id="systemd-panel">
@@ -360,6 +444,17 @@
     color: #fff;
     letter-spacing: 0.18em;
     text-transform: uppercase;
+  }
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
   .header-stats {
     display: flex;
@@ -673,5 +768,73 @@
     text-align: center;
     padding: 2rem 0;
     font-style: italic;
+  }
+
+  /* ── Poll controls (mirrors ProcessesPane) ───────────────────────── */
+  .cmd-auth-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.25rem 0.7rem;
+  }
+  .poll-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .interval-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .poll-btn {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+  }
+  .poll-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-base);
+  }
+  .poll-btn.paused {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.4);
+  }
+  .poll-btn.apply {
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.4);
+  }
+  .poll-error {
+    font-size: 0.68rem;
+    color: #f87171;
+    font-family: ui-monospace, monospace;
+  }
+  .control-input {
+    background: var(--bg-card);
+    color: var(--text-base);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.7rem;
+    outline: none;
+    font-family: inherit;
+  }
+  .control-input:focus {
+    border-color: var(--accent);
   }
 </style>

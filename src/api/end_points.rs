@@ -50,6 +50,7 @@ pub async fn info() -> Json<InfoResponse> {
         allow_process_commands: args.allow_process_commands,
         allow_screen_commands: args.allow_screen_commands,
         allow_system_resources_commands: args.allow_system_resources_commands,
+        allow_systemd_commands: args.allow_systemd_commands
     })
 }
 
@@ -513,4 +514,33 @@ pub async fn units_by_active_state(
 /// Returns failedunits.
 pub async fn failed_units() -> Json<Vec<systemd::UnitSnapshot>> {
     Json(systemd::get_failed_units().await)
+}
+
+// ---------------------------------------------------------------------------
+// Systemd command endpoints (requires --allow-systemd-commands)
+// ---------------------------------------------------------------------------
+
+/// `POST /systemd/poll/pause`
+pub async fn systemd_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+    systemd::pause_poll().await.map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /systemd/poll/resume`
+pub async fn systemd_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+    systemd::resume_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /systemd/poll/interval`
+pub async fn systemd_set_poll_interval(
+    Json(body): Json<SetPollIntervalRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let interval = tokio::time::Duration::from_millis(body.interval_ms);
+    systemd::set_poll_interval(interval)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
 }

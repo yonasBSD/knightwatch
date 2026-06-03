@@ -21,6 +21,7 @@ pub struct InfoResponse {
     pub allow_process_commands: bool,
     pub allow_screen_commands: bool,
     pub allow_system_resources_commands: bool,
+    pub allow_systemd_commands: bool,
 }
 
 #[derive(Debug, Deserialize)]

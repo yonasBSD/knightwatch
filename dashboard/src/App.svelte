@@ -29,7 +29,8 @@
       !info.auth_enabled &&
       (info.allow_process_commands ||
         info.allow_screen_commands ||
-        info.allow_system_resources_commands) &&
+        info.allow_system_resources_commands ||
+        info.allow_systemd_commands) &&
       !$auth.token,
   );
 
@@ -109,6 +110,7 @@
         allow_process_commands: false,
         allow_screen_commands: false,
         allow_system_resources_commands: false,
+        allow_systemd_commands: false,
       };
     }
 
@@ -263,7 +265,7 @@
         </button>
       {/if}
 
-      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && info?.allow_system_resources_commands && $auth.token)}
+      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && info?.allow_system_resources_commands && info?.allow_systemd_commands && $auth.token)}
         <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
           <span class="logout-icon" aria-hidden="true">⏻</span>
           Sign out
@@ -323,7 +325,12 @@
         class:active={activeTab === "systemd"}
         role="tabpanel"
       >
-        <SystemdPane active={activeTab === "systemd"} enabled={info.systemd} />
+        <SystemdPane
+          active={activeTab === "systemd"}
+          enabled={info.systemd}
+          allowSystemdCommands={info.allow_systemd_commands ?? false}
+          isAuthenticated={!!$auth.token}
+        />
       </section>
     {/if}
   </div>

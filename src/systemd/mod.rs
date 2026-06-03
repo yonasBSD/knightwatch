@@ -16,7 +16,8 @@ mod utils;
 
 #[cfg(target_os = "linux")]
 pub fn init_systemd_monitor() {
-    if !get_config().args.systemd {
+    let config = get_config();
+    if !config.args.systemd {
         return;
     }
     tokio::spawn(async move {
@@ -28,6 +29,11 @@ pub fn init_systemd_monitor() {
                 monitor::SYSTEMD_EVENT_SENDER
                     .set(monitor.channels.event_tx.clone())
                     .unwrap();
+                if config.args.allow_systemd_commands {
+                    monitor::SYSTEMD_COMMAND_SENDER
+                        .set(monitor.channels.command_tx.clone())
+                        .unwrap();
+                }
                 info!("Systemd Monitor started");
                 if let Err(e) = monitor.start_monitor_loop().await {
                     error!(?e, "systemd monitor loop exited with error");

@@ -14,16 +14,21 @@ use crate::prelude::*;
 pub struct SystemdMonitorChannels {
     pub query_tx: mpsc::Sender<SystemdQuery>,
     pub query_rx: Option<mpsc::Receiver<SystemdQuery>>,
+    pub command_tx: mpsc::Sender<SystemdCommand>,
+    pub command_rx: Option<mpsc::Receiver<SystemdCommand>>,
     pub event_tx: broadcast::Sender<SystemdEvent>,
 }
 
 impl SystemdMonitorChannels {
     pub fn new() -> Self {
         let (query_tx, query_rx) = mpsc::channel(1024);
+        let (command_tx, command_rx) = mpsc::channel(256);
         let (event_tx, _) = broadcast::channel(64);
         Self {
             query_tx,
             query_rx: Some(query_rx),
+            command_tx,
+            command_rx: Some(command_rx),
             event_tx,
         }
     }
@@ -32,6 +37,12 @@ impl SystemdMonitorChannels {
         self.query_rx
             .take()
             .ok_or_else(|| Error::Systemd("Query receiver already taken".into()))
+    }
+
+    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<SystemdCommand>> {
+        self.command_rx
+            .take()
+            .ok_or_else(|| Error::ProcessTracker("Command receiver already taken".into()))
     }
 }
 
@@ -98,11 +109,18 @@ impl SystemdMonitor {
             .channels
             .take_query_rx()
             .expect("Failed to take query receiver");
+        let mut command_rx = self
+            .channels
+            .take_command_rx()
+            .expect("Failed to take command receiver");
         self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
         loop {
             tokio::select! {
                 Some(query) = query_rx.recv() => {
                     self.handle_query(query);
+                }
+                Some(command) = command_rx.recv() => {
+                    self.handle_command(command);
                 }
                 _ = async { self.poll_interval_timer.as_mut().unwrap().tick().await }, if self.poll_interval_timer.is_some() => {
                     self.handle_tick().await;
@@ -141,6 +159,30 @@ impl SystemdMonitor {
                     })
                     .unwrap_or_default();
                 let _ = response.send(units);
+            }
+        }
+    }
+
+    fn handle_command(&mut self, command: SystemdCommand) {
+        match command {
+            // ----------------------------------------------------------------
+            // Polling control.
+            // ----------------------------------------------------------------
+            SystemdCommand::SetPollInterval { interval, response } => {
+                self.poll_interval = interval;
+                self.poll_interval_timer = Some(tokio::time::interval(interval));
+                info!(ms = interval.as_millis(), "poll interval updated");
+                let _ = response.send(Ok(()));
+            }
+            SystemdCommand::PausePoll { response } => {
+                self.poll_interval_timer = None;
+                info!("polling paused");
+                let _ = response.send(Ok(()));
+            }
+            SystemdCommand::ResumePoll { response } => {
+                self.poll_interval_timer = Some(tokio::time::interval(self.poll_interval));
+                info!("polling resumed");
+                let _ = response.send(Ok(()));
             }
         }
     }
@@ -403,3 +445,4 @@ impl SystemdMonitor {
 
 pub static SYSTEMD_QUERY_SENDER: OnceLock<mpsc::Sender<SystemdQuery>> = OnceLock::new();
 pub static SYSTEMD_EVENT_SENDER: OnceLock<broadcast::Sender<SystemdEvent>> = OnceLock::new();
+pub static SYSTEMD_COMMAND_SENDER: OnceLock<mpsc::Sender<SystemdCommand>> = OnceLock::new();

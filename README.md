@@ -22,6 +22,7 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 - **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
 - **System Resources Commands** — Set tresholds, refresh masks and control polling via API or Telegram (requires `--allow-system-resources-commands`)
 - **Systemd Monitor** — Live systemd unit tracking with active/failed/inactive counts, per-unit state, resource usage, and change events (Linux only)
+- **Systemd Commands** — control polling via API or Telegram (requires `--allow-systemd-commands`)
 - **Telegram Bot** — Optional bot for remote monitoring, push notifications, and process commands
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 
@@ -125,6 +126,7 @@ knightwatch --pid <PID> --allow-process-commands
 | `--allow-process-commands` | `false` | Enable process command endpoints (kill, track, untrack, poll control) — **always requires authentication** |
 | `--allow-screen-commands` | `false` | Enable screen command endpoints (poll control) — **always requires authentication** |
 | `--allow-system-resources-commands` | `false` | Enable system resources command endpoints (set tresholds, refresh masks, poll control) — **always requires authentication** |
+| `--allow-systemd-commands` | `false` | Enable systemd command endpoints (poll control) — **always requires authentication** |
 
 > **Note:** `allowing commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
 

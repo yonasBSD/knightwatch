@@ -263,24 +263,34 @@ impl SystemResourcesCallbackAction {
     pub fn decode(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.splitn(7, ':').collect();
         match parts.as_slice() {
-            ["sr_set_thresholds", cpu_warn, memory_warn, disk_warn, battery_low] => {
-                Some(SystemResourcesCallbackAction::SetThresholds(Thresholds {
-                    cpu_warn: cpu_warn.parse().ok()?,
-                    memory_warn: memory_warn.parse().ok()?,
-                    disk_warn: disk_warn.parse().ok()?,
-                    battery_low: battery_low.parse().ok()?,
-                }))
-            }
-            ["sr_set_refresh_mask", cpu, memory, disks, networks, temperatures, gpus] => {
-                Some(SystemResourcesCallbackAction::SetRefreshMask(RefreshMask {
-                    cpu: *cpu != "0",
-                    memory: *memory != "0",
-                    disks: *disks != "0",
-                    networks: *networks != "0",
-                    temperatures: *temperatures != "0",
-                    gpus: *gpus != "0",
-                }))
-            }
+            [
+                "sr_set_thresholds",
+                cpu_warn,
+                memory_warn,
+                disk_warn,
+                battery_low,
+            ] => Some(SystemResourcesCallbackAction::SetThresholds(Thresholds {
+                cpu_warn: cpu_warn.parse().ok()?,
+                memory_warn: memory_warn.parse().ok()?,
+                disk_warn: disk_warn.parse().ok()?,
+                battery_low: battery_low.parse().ok()?,
+            })),
+            [
+                "sr_set_refresh_mask",
+                cpu,
+                memory,
+                disks,
+                networks,
+                temperatures,
+                gpus,
+            ] => Some(SystemResourcesCallbackAction::SetRefreshMask(RefreshMask {
+                cpu: *cpu != "0",
+                memory: *memory != "0",
+                disks: *disks != "0",
+                networks: *networks != "0",
+                temperatures: *temperatures != "0",
+                gpus: *gpus != "0",
+            })),
             _ => None,
         }
     }
@@ -312,12 +322,13 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::Proce
         let s = self.0;
         write!(
             f,
-            "🔹 *{name}* `\\(PID {pid}\\)`\n   ├ State: `{state}`\n   ├ CPU: `{cpu:.1}%`\n   └ Mem: `{mem}`",
+            "🔹 *{name}* `\\(PID {pid}\\)`\n   ├ State: `{state}`\n   ├ CPU: `{cpu:.1}%`\n   └ Mem: `{mem}`\n   └ Disk: `{disk}`",
             pid = s.pid,
             name = escape_mdv2(&s.name),
             state = escape_mdv2(&s.state.to_string()),
             cpu = s.cpu_usage,
             mem = escape_mdv2(&format_bytes(s.memory_bytes)),
+            disk = escape_mdv2(&format_bytes(s.disk_usage)),
         )?;
         #[cfg(target_os = "linux")]
         {

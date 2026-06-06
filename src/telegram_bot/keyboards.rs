@@ -32,7 +32,10 @@ pub fn top_processes_keyboard() -> KeyboardMarkup {
             KeyboardButton::new("🔥 By CPU"),
             KeyboardButton::new("🧠 By Memory"),
         ],
-        vec![KeyboardButton::new("❌ Cancel")],
+        vec![
+            KeyboardButton::new("💾 By Disk"),
+            KeyboardButton::new("❌ Cancel"),
+        ],
     ])
     .resize_keyboard()
 }

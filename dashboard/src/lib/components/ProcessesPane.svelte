@@ -308,7 +308,8 @@
             <div class="top-controls">
               <select class="control-input" bind:value={topSort}>
                 <option value="cpu">CPU</option>
-                <option value="mem">MEM</option>
+                <option value="memory">MEMORY</option>
+                <option value="disk">DISK</option>
               </select>
               <input
                 type="number"

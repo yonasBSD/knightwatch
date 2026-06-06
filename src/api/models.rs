@@ -59,12 +59,12 @@ pub struct ScreenshotResponse {
 #[derive(Deserialize)]
 pub struct TopProcessesParams {
     pub limit: Option<usize>,
-    pub sort: String,
+    pub sort: crate::process_tracker::SortKey,
 }
 
 #[derive(Deserialize)]
 pub struct KillProcessRequest {
-    pub signal: String,
+    pub signal: crate::process_tracker::ProcessSignal,
 }
 
 #[derive(Deserialize)]

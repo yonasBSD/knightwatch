@@ -43,6 +43,7 @@ struct ProcessTrackerState {
     root_processes: HashMap<u32, RootProcess>,
     last_top_by_memory: Vec<ProcessSnapshot>,
     last_top_by_cpu: Vec<ProcessSnapshot>,
+    last_top_by_disk: Vec<ProcessSnapshot>,
 }
 
 impl ProcessTrackerState {
@@ -54,6 +55,7 @@ impl ProcessTrackerState {
                 .collect(),
             last_top_by_memory: Vec::new(),
             last_top_by_cpu: Vec::new(),
+            last_top_by_disk: Vec::new(),
         }
     }
 }
@@ -179,6 +181,13 @@ impl ProcessTracker {
                     SortKey::Cpu => self
                         .state
                         .last_top_by_cpu
+                        .iter()
+                        .take(limit)
+                        .cloned()
+                        .collect(),
+                    SortKey::Disk => self
+                        .state
+                        .last_top_by_disk
                         .iter()
                         .take(limit)
                         .cloned()
@@ -309,7 +318,10 @@ impl ProcessTracker {
         self.sys.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::nothing().with_cpu().with_memory(),
+            ProcessRefreshKind::nothing()
+                .with_cpu()
+                .with_memory()
+                .with_disk_usage(),
         );
         let pids: Vec<u32> = self.state.root_processes.keys().cloned().collect();
         for pid in pids {
@@ -463,14 +475,21 @@ impl ProcessTracker {
     }
 
     fn set_top_processes(&mut self) {
-        let mut all: Vec<(u32, f32, u64)> = self
+        let mut all: Vec<(u32, f32, u64, u64)> = self
             .sys
             .processes()
             .values()
-            .map(|p| (p.pid().as_u32(), p.cpu_usage(), p.memory()))
+            .map(|p| {
+                (
+                    p.pid().as_u32(),
+                    p.cpu_usage(),
+                    p.memory(),
+                    super::utils::disk_usage_total(p.disk_usage()),
+                )
+            })
             .collect();
         let mut cache: HashMap<u32, ProcessSnapshot> = HashMap::new();
-        let mut get_or_create = |pid: u32| -> Option<ProcessSnapshot> {
+        let mut get_or_create = |pid| -> Option<ProcessSnapshot> {
             if let Some(cached) = cache.get(&pid) {
                 return Some(cached.clone());
             }
@@ -484,13 +503,19 @@ impl ProcessTracker {
         self.state.last_top_by_memory = all
             .iter()
             .take(self.limit_processes)
-            .filter_map(|&(pid, _, _)| get_or_create(pid))
+            .filter_map(|&(pid, _, _, _)| get_or_create(pid))
             .collect();
         all.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         self.state.last_top_by_cpu = all
             .iter()
             .take(self.limit_processes)
-            .filter_map(|&(pid, _, _)| get_or_create(pid))
+            .filter_map(|&(pid, _, _, _)| get_or_create(pid))
+            .collect();
+        all.sort_unstable_by(|a, b| b.3.cmp(&a.3));
+        self.state.last_top_by_disk = all
+            .iter()
+            .take(self.limit_processes)
+            .filter_map(|&(pid, _, _, _)| get_or_create(pid))
             .collect();
     }
 

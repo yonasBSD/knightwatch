@@ -34,3 +34,7 @@ pub fn collect_extended_info(pid: u32) -> (Option<String>, Vec<String>) {
         .unwrap_or_default();
     (cwd, cmdline)
 }
+
+pub fn disk_usage_total(disk_usage: sysinfo::DiskUsage) -> u64 {
+    disk_usage.written_bytes + disk_usage.read_bytes
+}

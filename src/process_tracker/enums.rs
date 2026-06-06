@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
@@ -71,7 +72,7 @@ pub enum ProcessTrackerQuery {
     },
 }
 
-#[derive(Debug, serde::Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessSignal {
     Kill,
@@ -241,7 +242,7 @@ impl std::fmt::Display for ProcessState {
 }
 
 #[cfg(target_os = "linux")]
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub enum FDType {
     File,
     Socket,
@@ -275,10 +276,12 @@ impl From<procfs::process::FDTarget> for FDType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum SortKey {
     Memory,
     Cpu,
+    Disk,
 }
 
 impl std::fmt::Display for SortKey {
@@ -286,20 +289,7 @@ impl std::fmt::Display for SortKey {
         match self {
             Self::Memory => write!(f, "Memory"),
             Self::Cpu => write!(f, "Cpu"),
-        }
-    }
-}
-
-impl TryFrom<String> for SortKey {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_str() {
-            "cpu" => Ok(Self::Cpu),
-            "mem" => Ok(Self::Memory),
-            _ => Err(format!(
-                "Invalid sort key: '{value}'. Expected 'cpu' or 'mem'"
-            )),
+            Self::Disk => write!(f, "Disk"),
         }
     }
 }

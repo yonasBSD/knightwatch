@@ -9,7 +9,8 @@ use base64::{Engine as _, engine::general_purpose};
 use super::{models::*, utils::*};
 use crate::{
     process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
-    screen_capture, system_resources, systemd,
+    screen_capture, system_resources,
+    systemd::{self, UnitSnapshot},
     utils::now_rfc3339,
 };
 
@@ -50,7 +51,7 @@ pub async fn info() -> Json<InfoResponse> {
         allow_process_commands: args.allow_process_commands,
         allow_screen_commands: args.allow_screen_commands,
         allow_system_resources_commands: args.allow_system_resources_commands,
-        allow_systemd_commands: args.allow_systemd_commands
+        allow_systemd_commands: args.allow_systemd_commands,
     })
 }
 
@@ -228,17 +229,16 @@ pub async fn process_status(Path(root_pid): Path<u32>) -> Json<ProcessStatus> {
 ///
 /// # Query Parameters
 /// - `limit`: Number of processes to return (default: 0 = all)
-/// - `sort`: Sort key, either `cpu` or `mem` (default: `cpu`)
+/// - `sort`: Sort key, either `cpu`, `memory` or `disk`
 ///
 /// # Errors
 /// - `400 Bad Request` if `sort` is not a valid sort key
 pub async fn top_processes(
     Query(params): Query<TopProcessesParams>,
 ) -> Result<Json<Vec<ProcessSnapshot>>, (StatusCode, String)> {
-    let limit = params.limit.unwrap_or(0);
-    let sort_key = process_tracker::SortKey::try_from(params.sort).map_err(bad_request)?;
-    let top_processes = process_tracker::get_top_processes(sort_key, limit).await;
-    Ok(Json(top_processes))
+    Ok(Json(
+        process_tracker::get_top_processes(params.sort, params.limit.unwrap_or(0)).await,
+    ))
 }
 
 /// `GET /supported-signals`
@@ -257,14 +257,12 @@ pub async fn kill_process(
     Path(pid): Path<u32>,
     body: Json<KillProcessRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let signal =
-        process_tracker::ProcessSignal::try_from(body.signal.as_str()).map_err(bad_request)?;
-    if !signal.is_supported() {
+    if !body.signal.is_supported() {
         return Err(bad_request(
-            crate::errors::Error::unsupported_signal(signal).to_string(),
+            crate::errors::Error::unsupported_signal(body.signal).to_string(),
         ));
     }
-    process_tracker::kill_process(pid, signal)
+    process_tracker::kill_process(pid, body.signal)
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
@@ -493,7 +491,7 @@ pub async fn systemd_snapshot() -> Result<Json<systemd::SystemdSnapshot>, (Statu
 /// Returns Unit Snapshot by name.
 pub async fn unit_snapshot(
     Path(unit_name): Path<String>,
-) -> Result<Json<systemd::UnitSnapshot>, (StatusCode, String)> {
+) -> Result<Json<UnitSnapshot>, (StatusCode, String)> {
     match systemd::get_unit(unit_name).await {
         Some(snap) => Ok(Json(snap)),
         None => Err(not_found("No Unit Snapshot was found".to_string())),
@@ -503,16 +501,14 @@ pub async fn unit_snapshot(
 /// `GET /units/{unit_state}`
 ///
 /// Returns units by active state.
-pub async fn units_by_active_state(
-    Path(unit_state): Path<String>,
-) -> Json<Vec<systemd::UnitSnapshot>> {
+pub async fn units_by_active_state(Path(unit_state): Path<String>) -> Json<Vec<UnitSnapshot>> {
     Json(systemd::get_units_by_active_state(unit_state.as_str().into()).await)
 }
 
 /// `GET /failed_units`
 ///
 /// Returns failedunits.
-pub async fn failed_units() -> Json<Vec<systemd::UnitSnapshot>> {
+pub async fn failed_units() -> Json<Vec<UnitSnapshot>> {
     Json(systemd::get_failed_units().await)
 }
 

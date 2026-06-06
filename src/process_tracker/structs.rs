@@ -83,6 +83,7 @@ pub struct ProcessSnapshot {
     pub state: ProcessState,
     pub cpu_usage: f32,
     pub memory_bytes: u64,
+    pub disk_usage: u64,
 
     // Optional fields only available on Linux
     #[cfg(target_os = "linux")]
@@ -106,6 +107,7 @@ impl From<&sysinfo::Process> for ProcessSnapshot {
             state: ProcessState::from(process.status()),
             cpu_usage: process.cpu_usage(),
             memory_bytes: process.memory(),
+            disk_usage: super::utils::disk_usage_total(process.disk_usage()),
             #[cfg(target_os = "linux")]
             cwd,
             #[cfg(target_os = "linux")]

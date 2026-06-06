@@ -107,6 +107,9 @@ pub async fn handle_plain_message(
         "🧠 By Memory" => {
             handle_top_processes_by(bot, msg, crate::process_tracker::SortKey::Memory).await?
         }
+        "💾 By Disk" => {
+            handle_top_processes_by(bot, msg, crate::process_tracker::SortKey::Disk).await?
+        }
         "🔧 Systemd" => handle_systemd_menu(bot, msg, state).await?,
         "📋 Systemd Overview" => handle_systemd_overview(bot, msg).await?,
         "🔴 Failed Units" => handle_systemd_failed(bot, msg).await?,

@@ -132,8 +132,12 @@
       <span class="value">{proc.cpu_usage.toFixed(1)}%</span>
     </div>
     <div class="proc-meta-item">
-      <span class="label">MEM</span>
+      <span class="label">MEMORY</span>
       <span class="value">{formatBytes(proc.memory_bytes)}</span>
+    </div>
+    <div class="proc-meta-item">
+      <span class="label">DISK</span>
+      <span class="value">{formatBytes(proc.disk_usage)}</span>
     </div>
   </div>
 

@@ -208,7 +208,7 @@ impl ProcessTracker {
                 signal,
                 response,
             } => {
-                let Some(sysinfo_signal) = signal.to_sysinfo_signal() else {
+                let Some(sysinfo_signal) = signal.sysinfo_signal() else {
                     let _ = response.send(Err(Error::unsupported_signal(signal)));
                     return;
                 };

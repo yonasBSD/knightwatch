@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use tokio::sync::{broadcast, mpsc};
 
-use super::{enums::*, process_state_serde};
+use super::enums::*;
 
 // Linux-only structures
 #[cfg(target_os = "linux")]
@@ -79,7 +79,6 @@ impl RootProcess {
 pub struct ProcessSnapshot {
     pub pid: u32,
     pub name: String,
-    #[serde(with = "process_state_serde")]
     pub state: ProcessState,
     pub cpu_usage: f32,
     pub memory_bytes: u64,

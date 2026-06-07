@@ -114,7 +114,7 @@ impl TryFrom<&str> for ProcessSignal {
 impl ProcessSignal {
     /// Returns `None` on Windows for any signal other than Kill,
     /// since only forceful termination is supported there.
-    pub fn to_sysinfo_signal(&self) -> Option<sysinfo::Signal> {
+    pub fn sysinfo_signal(&self) -> Option<sysinfo::Signal> {
         #[cfg(windows)]
         {
             // Windows only supports Kill; everything else is a no-op.
@@ -212,7 +212,7 @@ pub enum ProcessTrackerCommand {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum ProcessState {
     Running,
     Sleeping,

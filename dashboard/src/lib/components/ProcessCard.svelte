@@ -20,10 +20,16 @@
   };
 
   function stateCls(state) {
-    if (state === "running") return "state-running";
-    if (state === "sleeping") return "state-sleeping";
-    if (state === "gone") return "state-gone";
+    if (state === "Running") return "state-running";
+    if (state === "Sleeping") return "state-sleeping";
+    if (state === "Gone") return "state-gone";
     return "state-other";
+  }
+
+  function stateLabel(state) {
+    if (typeof state === "string") return state.toLowerCase();
+    if (state?.Other) return state.Other;
+    return "unknown";
   }
 
   function fdColor(type) {
@@ -119,7 +125,9 @@
     <div class="proc-name" title="{proc.name} (PID {proc.pid})">
       {#if isRoot}⬢{/if}{proc.name}
     </div>
-    <span class="state-pill {stateCls(proc.state)}">{proc.state}</span>
+    <span class="state-pill {stateCls(proc.state)}"
+      >{stateLabel(proc.state)}</span
+    >
   </div>
 
   <div class="proc-meta">

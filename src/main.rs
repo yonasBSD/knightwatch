@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod docker_tracker;
 mod errors;
 mod macros;
 mod prelude;
@@ -25,6 +26,7 @@ async fn main() -> Result<(), errors::Error> {
     screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();
     system_resources::init_system_resources();
+    docker_tracker::init_docker_tracker();
     systemd::init_systemd_monitor();
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let vite = api::init_api_server(cancel_token.clone())?;

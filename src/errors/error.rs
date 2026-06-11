@@ -9,6 +9,7 @@ pub enum Error {
     Config(String),
     ProcessTracker(String),
     SystemResources(String),
+    DockerTracker(String),
     Systemd(String),
     Other(String),
     TelegramBot(String),
@@ -43,6 +44,14 @@ impl Error {
     pub fn systemd_commands_disabled() -> Self {
         Self::Systemd("Systemd commands are disabled — rerun with --allow-systemd-commands".into())
     }
+    pub fn bollard_error(err: bollard::errors::Error) -> Self {
+        Self::DockerTracker(format!("Docker API error: {err}"))
+    }
+    pub fn docker_commands_disabled() -> Self {
+        Self::DockerTracker(
+            "Docker commands are disabled — rerun with --allow-docker-commands".into(),
+        )
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -55,6 +64,7 @@ impl std::fmt::Display for Error {
             | Error::TelegramBot(msg)
             | Error::Screen(msg)
             | Error::SystemResources(msg)
+            | Error::DockerTracker(msg)
             | Error::Systemd(msg)
             | Error::ProcessTracker(msg) => {
                 write!(f, "{msg}")

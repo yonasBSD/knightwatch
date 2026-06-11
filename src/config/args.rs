@@ -67,21 +67,29 @@ pub struct CliArgs {
     #[arg(long, default_value_t = false)]
     pub systemd: bool,
 
+    /// Enable docker tracker
+    #[arg(long, default_value_t = false)]
+    pub docker: bool,
+
     /// Allow process commands (kill, track, etc.)
     #[arg(long, default_value_t = false)]
     pub allow_process_commands: bool,
 
-    /// Allow screen commands (kill, track, etc.)
+    /// Allow screen commands
     #[arg(long, default_value_t = false)]
     pub allow_screen_commands: bool,
 
-    /// Allow system_resources commands (kill, track, etc.)
+    /// Allow system_resources commands
     #[arg(long, default_value_t = false)]
     pub allow_system_resources_commands: bool,
 
     /// Allow systemd commands
     #[arg(long, default_value_t = false)]
     pub allow_systemd_commands: bool,
+
+    /// Allow docker commands
+    #[arg(long, default_value_t = false)]
+    pub allow_docker_commands: bool,
 }
 
 #[derive(Subcommand, Debug)]

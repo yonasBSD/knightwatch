@@ -8,7 +8,13 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
     let mut process_tracker_rx = crate::process_tracker::subscribe_events();
     let mut system_resources_rx = crate::system_resources::subscribe_events();
     let mut systemd_rx = crate::systemd::subscribe_events();
-    if crate::all_none!(process_tracker_rx, system_resources_rx, systemd_rx) {
+    let mut docker_tracker_rx = crate::docker_tracker::subscribe_events();
+    if crate::all_none!(
+        process_tracker_rx,
+        system_resources_rx,
+        systemd_rx,
+        docker_tracker_rx
+    ) {
         return;
     }
     let client = Client::new();
@@ -26,6 +32,9 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
                 WebhookPayload::from(&e)
             }
             e = recv_or_pending(&mut systemd_rx, "webhook: systemd") => {
+                WebhookPayload::from(&e)
+            }
+            e = recv_or_pending(&mut docker_tracker_rx, "webhook: docker tracker") => {
                 WebhookPayload::from(&e)
             }
         };

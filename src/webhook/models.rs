@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
 
 use crate::{
-    process_tracker::ProcessTrackerEvent, system_resources::SystemResourcesEvent,
-    systemd::SystemdEvent,
+    docker_tracker::DockerTrackerEvent, process_tracker::ProcessTrackerEvent,
+    system_resources::SystemResourcesEvent, systemd::SystemdEvent,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -155,6 +155,82 @@ impl From<&SystemdEvent> for WebhookPayload {
             SystemdEvent::UnitDisappeared { unit_name } => (
                 "systemd.unit_disappeared",
                 json!({ "unit_name": unit_name }),
+            ),
+        };
+        Self::new(event_name, data)
+    }
+}
+
+impl From<&DockerTrackerEvent> for WebhookPayload {
+    fn from(event: &DockerTrackerEvent) -> Self {
+        let (event_name, data) = match event {
+            DockerTrackerEvent::InitialSnapshot { containers } => (
+                "docker.initial_snapshot",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainersAppeared { containers } => (
+                "docker.containers_appeared",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainersDisappeared { containers } => (
+                "docker.containers_disappeared",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainerStatusChanged {
+                container,
+                previous,
+            } => (
+                "docker.container_status_changed",
+                json!({
+                    "id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "status": container.status,
+                    "previous_status": previous,
+                }),
+            ),
+            DockerTrackerEvent::ContainerHealthChanged {
+                container,
+                previous,
+            } => (
+                "docker.container_health_changed",
+                json!({
+                    "id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "health": container.health,
+                    "previous_health": previous,
+                }),
+            ),
+            DockerTrackerEvent::ContainerOomKilled { id, name } => (
+                "docker.container_oom_killed",
+                json!({
+                    "id": id,
+                    "name": name,
+                }),
+            ),
+            DockerTrackerEvent::ContainerActionResult {
+                id,
+                name,
+                action,
+                success,
+            } => (
+                "docker.container_action_result",
+                json!({
+                    "id": id,
+                    "name": name,
+                    "action": action,
+                    "success": success,
+                }),
             ),
         };
         Self::new(event_name, data)

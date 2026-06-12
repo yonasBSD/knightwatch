@@ -46,6 +46,10 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
         .route("/unit/{unit_name}", get(unit_snapshot)) // unit snapshot
         .route("/units/{unit_state}", get(units_by_active_state)) // units by active state
         .route("/failed_units", get(failed_units)) // failed_units
+        // ── Docker Containers ───────────────────────────────────────────────────────
+        .route("/docker-containers", get(list_docker_containers)) // docker containers
+        .route("/container/{id_or_name}", get(get_docker_container)) // container by name or id
+        .route("/top-containers", get(top_docker_containers)) // top containers
         .with_state(cancel_token);
     if auth_layer {
         api.layer(middleware::from_fn(auth_middleware))
@@ -102,6 +106,20 @@ fn create_systemd_commands_router() -> Router {
         .layer(middleware::from_fn(auth_middleware))
 }
 
+fn create_docker_commands_router() -> Router {
+    Router::new()
+        .route("/docker/stop-container", post(stop_container))
+        .route("/docker/kill-container", post(kill_container))
+        .route("/docker/start-container", post(start_container))
+        .route("/docker/restart-container", post(restart_container))
+        .route("/docker/pause-container", post(pause_container))
+        .route("/docker/unpause-container", post(unpause_container))
+        .route("/docker/poll/pause", post(docker_pause_poll))
+        .route("/docker/poll/resume", post(docker_resume_poll))
+        .route("/docker/poll/interval", post(docker_set_poll_interval))
+        .layer(middleware::from_fn(auth_middleware))
+}
+
 fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
     config.args.enable_auth
         || config.args.allow_process_commands
@@ -112,8 +130,9 @@ fn should_enable_auth(config: &crate::config::AppConfig) -> bool {
             let screen_check = false;
             screen_check
         }
-        || config.args.allow_system_resources_commands
-        || config.args.allow_systemd_commands
+        || (config.args.system_resources && config.args.allow_system_resources_commands)
+        || (config.args.systemd && config.args.allow_systemd_commands)
+        || (config.args.docker && config.args.allow_docker_commands)
 }
 
 pub fn create_routers(
@@ -140,6 +159,9 @@ pub fn create_routers(
     }
     if config.args.allow_systemd_commands {
         app = app.nest("/api", create_systemd_commands_router())
+    }
+    if config.args.allow_docker_commands {
+        app = app.nest("/api", create_docker_commands_router())
     }
     app
 }

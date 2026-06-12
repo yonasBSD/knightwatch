@@ -18,10 +18,12 @@ pub struct InfoResponse {
     pub telegram_bot: bool,
     pub system_resources: bool,
     pub systemd: bool,
+    pub docker: bool,
     pub allow_process_commands: bool,
     pub allow_screen_commands: bool,
     pub allow_system_resources_commands: bool,
     pub allow_systemd_commands: bool,
+    pub allow_docker_commands: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +90,29 @@ pub struct SetRefreshMaskRequest {
     pub networks: bool,
     pub temperatures: bool,
     pub gpus: bool,
+}
+
+#[derive(Deserialize)]
+pub struct TopContainersParams {
+    pub sort: crate::docker_tracker::DockerSortKey,
+    pub limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+pub struct ContainerRequest {
+    pub id_or_name: String,
+}
+
+#[derive(Deserialize)]
+pub struct KillContainerRequest {
+    pub id_or_name: String,
+    pub signal: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ContainerTimeoutRequest {
+    pub id_or_name: String,
+    pub timeout_secs: Option<i32>,
 }
 
 #[cfg(not(debug_assertions))]

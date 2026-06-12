@@ -4,10 +4,11 @@ use axum::{
     response::Json,
 };
 use axum_extra::{TypedHeader, headers};
-use base64::{Engine as _, engine::general_purpose};
+use base64::{Engine, engine::general_purpose};
 
 use super::{models::*, utils::*};
 use crate::{
+    docker_tracker::{self, ContainerSnapshot},
     process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
     screen_capture, system_resources,
     systemd::{self, UnitSnapshot},
@@ -48,10 +49,12 @@ pub async fn info() -> Json<InfoResponse> {
         telegram_bot: args.telegram,
         system_resources: args.system_resources,
         systemd: args.systemd,
+        docker: args.docker,
         allow_process_commands: args.allow_process_commands,
         allow_screen_commands: args.allow_screen_commands,
         allow_system_resources_commands: args.allow_system_resources_commands,
         allow_systemd_commands: args.allow_systemd_commands,
+        allow_docker_commands: args.allow_docker_commands,
     })
 }
 
@@ -536,6 +539,148 @@ pub async fn systemd_set_poll_interval(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let interval = tokio::time::Duration::from_millis(body.interval_ms);
     systemd::set_poll_interval(interval)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// docker endpoints
+// ---------------------------------------------------------------------------
+
+/// `GET /docker-containers`
+///
+pub async fn list_docker_containers() -> Json<Vec<ContainerSnapshot>> {
+    Json(docker_tracker::list_containers().await)
+}
+
+/// `GET /container/{id_or_name}`
+///
+/// Returns a container snapshot by ID or name, or 404 if not found.
+pub async fn get_docker_container(
+    Path(id_or_name): Path<String>,
+) -> Result<Json<ContainerSnapshot>, (StatusCode, String)> {
+    match docker_tracker::get_container(id_or_name).await {
+        Some(snap) => Ok(Json(snap)),
+        None => Err(not_found("No docker container was found".to_string())),
+    }
+}
+
+/// `GET /top-containers?sort=cpu&limit=10`
+///
+/// Returns the top N containers sorted by the given key.
+pub async fn top_docker_containers(
+    Query(params): Query<TopContainersParams>,
+) -> Result<Json<Vec<ContainerSnapshot>>, (StatusCode, String)> {
+    Ok(Json(
+        docker_tracker::get_top_containers(params.sort, params.limit.unwrap_or(0)).await,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Docker command endpoints (requires --allow-docker-commands)
+// ---------------------------------------------------------------------------
+
+/// `POST /docker/stop-container`
+///
+/// Stops a container by ID or name, with an optional timeout in seconds before killing it.
+pub async fn stop_container(
+    Json(body): Json<ContainerTimeoutRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::stop_container(body.id_or_name, body.timeout_secs)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/kill-container`
+///
+/// Kills a container by ID or name, with a specified signal (e.g. "SIGKILL", "SIGTERM").
+pub async fn kill_container(
+    Json(body): Json<KillContainerRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::kill_container(body.id_or_name, body.signal)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/start-container`
+///
+/// Starts a container by ID or name.
+pub async fn start_container(
+    Json(body): Json<ContainerRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::start_container(body.id_or_name)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/restart-container`
+///
+/// Restarts a container by ID or name.
+pub async fn restart_container(
+    Json(body): Json<ContainerTimeoutRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::restart_container(body.id_or_name, body.timeout_secs)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/pause-container`
+///
+/// Pauses a container by ID or name.
+pub async fn pause_container(
+    Json(body): Json<ContainerRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::pause_container(body.id_or_name)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/unpause-container`
+///
+/// Unpauses a container by ID or name.
+pub async fn unpause_container(
+    Json(body): Json<ContainerRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::unpause_container(body.id_or_name)
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/poll/pause`
+///
+/// Pauses the docker tracker polling loop.
+pub async fn docker_pause_poll() -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::pause_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/poll/resume`
+///
+/// Resumes the docker tracker polling loop.
+pub async fn docker_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
+    docker_tracker::resume_poll()
+        .await
+        .map_err(internal_server_error)?;
+    Ok(StatusCode::OK)
+}
+
+/// `POST /docker/poll/interval`
+///
+/// Sets the interval of the docker tracker polling loop in milliseconds.
+pub async fn docker_set_poll_interval(
+    Json(body): Json<SetPollIntervalRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let interval = tokio::time::Duration::from_millis(body.interval_ms);
+    docker_tracker::set_poll_interval(interval)
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)

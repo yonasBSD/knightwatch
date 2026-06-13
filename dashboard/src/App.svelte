@@ -6,6 +6,7 @@
   import ProcessesPane from "./lib/components/ProcessesPane.svelte";
   import SystemdPane from "./lib/components/SystemdPane.svelte";
   import LoginPage from "./lib/components/LoginPage.svelte";
+  import DockerPane from "./lib/components/DockerPane.svelte";
   import { auth, apiFetch } from "./lib/api.js";
 
   // ── State ──────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@
       (info.allow_process_commands ||
         info.allow_screen_commands ||
         info.allow_system_resources_commands ||
+        info.allow_docker_commands ||
         info.allow_systemd_commands) &&
       !$auth.token,
   );
@@ -56,6 +58,7 @@
   // Tab visibility driven by info
   let showScreens = $derived(!info || !info.blind);
   let showSystem = $derived(!info || info.system_resources !== false);
+  let showDocker = $derived(!info || info.docker !== false);
   let showProcesses = $derived(
     !info || info.top_processes !== false || (info.pid && info.pid.length > 0),
   );
@@ -66,7 +69,7 @@
   let tabEls = $state({});
   let indicatorStyle = $state("width:0;transform:translateX(0)");
 
-  const TAB_NAMES = ["screens", "system", "processes", "systemd"];
+  const TAB_NAMES = ["screens", "system", "processes", "systemd", "docker"];
 
   // ── Tab indicator ─────────────────────────────────────────────────
   function moveIndicator(name) {
@@ -111,6 +114,7 @@
         allow_screen_commands: false,
         allow_system_resources_commands: false,
         allow_systemd_commands: false,
+        allow_docker_commands: false,
       };
     }
 
@@ -125,6 +129,7 @@
         if (t === "screens" && info.blind) return false;
         if (t === "system" && !info.system_resources) return false;
         if (t === "systemd" && !info.systemd) return false;
+        if (t === "docker" && !info.docker) return false;
         return true;
       });
       if (!visibleTabs.includes(activeTab)) {
@@ -227,6 +232,19 @@
         </button>
       {/if}
 
+      {#if showDocker}
+        <button
+          class="tab"
+          role="tab"
+          aria-selected={activeTab === "docker"}
+          onclick={() => activateTab("docker")}
+          bind:this={tabEls["docker"]}
+        >
+          <span class="tab-icon" aria-hidden="true">◉</span>
+          <span class="tab-label">Docker</span>
+        </button>
+      {/if}
+
       <span class="tab-indicator" aria-hidden="true" style={indicatorStyle}
       ></span>
     </div>
@@ -265,7 +283,7 @@
         </button>
       {/if}
 
-      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && info?.allow_system_resources_commands && info?.allow_systemd_commands && $auth.token)}
+      {#if info?.auth_enabled || (info?.allow_process_commands && info?.allow_screen_commands && info?.allow_system_resources_commands && info?.allow_systemd_commands && info?.allow_docker_commands && $auth.token)}
         <button id="logout-btn" title="Sign out" onclick={() => auth.logout()}>
           <span class="logout-icon" aria-hidden="true">⏻</span>
           Sign out
@@ -329,6 +347,19 @@
           active={activeTab === "systemd"}
           enabled={info.systemd}
           allowSystemdCommands={info.allow_systemd_commands ?? false}
+          isAuthenticated={!!$auth.token}
+        />
+      </section>
+
+      <section
+        class="pane"
+        class:active={activeTab === "docker"}
+        role="tabpanel"
+      >
+        <DockerPane
+          active={activeTab === "docker"}
+          enabled={info.docker}
+          allowDockerCommands={info.allow_docker_commands ?? false}
           isAuthenticated={!!$auth.token}
         />
       </section>

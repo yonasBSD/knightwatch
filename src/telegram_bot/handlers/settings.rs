@@ -4,14 +4,14 @@ use teloxide::{
 };
 
 use super::super::{
-    keyboards::{
-        cancel_keyboard, polling_subsystem_keyboard, settings_keyboard, subsystem_polling_keyboard,
-    },
+    keyboards::{self, subsystem_polling_keyboard},
     models::{ChatState, State, Subsystem},
     utils::escape_mdv2,
 };
 use super::auth::send_auth_first_message;
-use crate::{prelude::*, process_tracker, screen_capture, system_resources, systemd};
+use crate::{
+    docker_tracker, prelude::*, process_tracker, screen_capture, system_resources, systemd,
+};
 
 pub async fn handle_settings_menu(bot: Bot, msg: Message, state: State) -> Result<()> {
     if !state.is_authorized_to_commmand(msg.chat.id) {
@@ -20,7 +20,7 @@ pub async fn handle_settings_menu(bot: Bot, msg: Message, state: State) -> Resul
     state.set_chat_state_idle(msg.chat.id);
     bot.send_message(msg.chat.id, "⚙️ *Settings*")
         .parse_mode(ParseMode::MarkdownV2)
-        .reply_markup(ReplyMarkup::Keyboard(settings_keyboard()))
+        .reply_markup(ReplyMarkup::Keyboard(keyboards::settings_keyboard()))
         .await?;
     Ok(())
 }
@@ -32,7 +32,9 @@ pub async fn handle_polling_menu(bot: Bot, msg: Message, state: State) -> Result
     state.set_chat_state_idle(msg.chat.id);
     bot.send_message(msg.chat.id, "⏱️ *Polling* — choose a subsystem:")
         .parse_mode(ParseMode::MarkdownV2)
-        .reply_markup(ReplyMarkup::Keyboard(polling_subsystem_keyboard()))
+        .reply_markup(ReplyMarkup::Keyboard(
+            keyboards::polling_subsystem_keyboard(),
+        ))
         .await?;
     Ok(())
 }
@@ -74,6 +76,7 @@ pub async fn handle_pause_polling(
         Subsystem::ScreenCapture => Box::pin(screen_capture::pause_poll()),
         Subsystem::SystemResources => Box::pin(system_resources::pause_poll()),
         Subsystem::Systemd => Box::pin(systemd::pause_poll()),
+        Subsystem::DockerTracker => Box::pin(docker_tracker::pause_poll()),
     })
     .await;
     bot.send_message(msg.chat.id, reply)
@@ -99,6 +102,7 @@ pub async fn handle_resume_polling(
         Subsystem::ScreenCapture => Box::pin(screen_capture::resume_poll()),
         Subsystem::SystemResources => Box::pin(system_resources::resume_poll()),
         Subsystem::Systemd => Box::pin(systemd::resume_poll()),
+        Subsystem::DockerTracker => Box::pin(docker_tracker::resume_poll()),
     })
     .await;
     bot.send_message(msg.chat.id, reply)
@@ -143,7 +147,7 @@ pub async fn handle_poll_interval_prompt(
         ),
     )
     .parse_mode(ParseMode::MarkdownV2)
-    .reply_markup(ReplyMarkup::Keyboard(cancel_keyboard()))
+    .reply_markup(ReplyMarkup::Keyboard(keyboards::cancel_keyboard()))
     .await?;
     Ok(())
 }
@@ -165,6 +169,7 @@ pub async fn handle_poll_interval_input(
                 Subsystem::ScreenCapture => screen_capture::set_poll_interval(interval).await,
                 Subsystem::SystemResources => system_resources::set_poll_interval(interval).await,
                 Subsystem::Systemd => systemd::set_poll_interval(interval).await,
+                Subsystem::DockerTracker => docker_tracker::set_poll_interval(interval).await,
             };
             match result {
                 Ok(()) => format!("✅ *{label}* poll interval set to `{secs}s`\\."),

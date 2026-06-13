@@ -1,12 +1,9 @@
-use std::sync::Arc;
 use teloxide::prelude::*;
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use super::{broadcast::*, handlers::*, models::*};
 use crate::prelude::*;
 
-pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
+pub fn init_bot(cancel_token: tokio_util::sync::CancellationToken) -> Option<TelegramBot> {
     let config = get_config();
     if !config.args.telegram {
         return None;
@@ -16,8 +13,8 @@ pub fn init_bot(cancel_token: CancellationToken) -> Option<TelegramBot> {
         return None;
     };
     let bot = Bot::new(token);
-    let (sender, receiver) = mpsc::channel(64);
-    let sender = Arc::new(sender);
+    let (sender, receiver) = tokio::sync::mpsc::channel(64);
+    let sender = std::sync::Arc::new(sender);
     let state = State::new();
     let mut dispatcher = Dispatcher::builder(bot.clone(), schema())
         .dependencies(dptree::deps![cancel_token.clone(), sender, state.clone()])
@@ -94,6 +91,9 @@ async fn handle_callback_query(bot: Bot, q: CallbackQuery, state: State) -> Resu
     }
     if let Some(action) = SystemResourcesCallbackAction::decode(data) {
         return handle_system_resources_callback(bot, chat_id, action).await;
+    }
+    if let Some(action) = DockerCallbackAction::decode(data) {
+        return handle_docker_callback(bot, chat_id, action).await;
     }
     bot.send_message(chat_id, "❓ Unknown action\\.").await?;
     Ok(())

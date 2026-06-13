@@ -1,4 +1,5 @@
 mod auth;
+mod docker;
 mod process;
 mod screenshot;
 mod settings;
@@ -6,6 +7,7 @@ mod system_resources;
 mod systemd;
 
 pub use auth::*;
+pub use docker::*;
 pub use process::*;
 pub use screenshot::*;
 pub use settings::*;
@@ -25,7 +27,7 @@ use super::{
     models::{AuthState, ChatState, State, Subsystem},
     utils::escape_mdv2,
 };
-use crate::prelude::*;
+use crate::{docker_tracker::DockerSortKey, prelude::*};
 
 pub async fn handle_start(
     bot: Bot,
@@ -114,6 +116,12 @@ pub async fn handle_plain_message(
         "📋 Systemd Overview" => handle_systemd_overview(bot, msg).await?,
         "🔴 Failed Units" => handle_systemd_failed(bot, msg).await?,
         "🔍 Unit Status" => handle_systemd_unit_prompt(bot, msg, state).await?,
+        "🐳 Docker" => handle_docker_menu(bot, msg, state).await?,
+        "📋 Docker Containers" => handle_docker_list(bot, msg, state).await?,
+        "🔥 By CPU (Docker)" => handle_docker_top(bot, msg, state, DockerSortKey::Cpu).await?,
+        "🧠 By Memory (Docker)" => {
+            handle_docker_top(bot, msg, state, DockerSortKey::Memory).await?
+        }
         "⚙️ Settings" => handle_settings_menu(bot, msg, state).await?,
         "⏱️ Polling" => handle_polling_menu(bot, msg, state).await?,
         // Subsystem polling pickers
@@ -129,6 +137,9 @@ pub async fn handle_plain_message(
         "⏱️ Systemd Polling" => {
             handle_subsystem_polling_menu(bot, msg, state, Subsystem::Systemd).await?
         }
+        "⏱️ Docker Tracker Polling" => {
+            handle_subsystem_polling_menu(bot, msg, state, Subsystem::DockerTracker).await?
+        }
         // Per-subsystem pause
         "⏸️ Pause Process Tracker" => {
             handle_pause_polling(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -140,6 +151,9 @@ pub async fn handle_plain_message(
             handle_pause_polling(bot, msg, state, Subsystem::SystemResources).await?
         }
         "⏸️ Pause Systemd" => handle_pause_polling(bot, msg, state, Subsystem::Systemd).await?,
+        "⏸️ Pause Docker Tracker" => {
+            handle_pause_polling(bot, msg, state, Subsystem::DockerTracker).await?
+        }
         // Per-subsystem resume
         "▶️ Resume Process Tracker" => {
             handle_resume_polling(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -153,6 +167,9 @@ pub async fn handle_plain_message(
         "▶️ Resume Systemd" => {
             handle_resume_polling(bot, msg, state, Subsystem::Systemd).await?
         }
+        "▶️ Resume Docker Tracker" => {
+            handle_resume_polling(bot, msg, state, Subsystem::DockerTracker).await?
+        }
         // Per-subsystem set interval
         "🕐 Set Process Tracker Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::ProcessTracker).await?
@@ -165,6 +182,9 @@ pub async fn handle_plain_message(
         }
         "🕐 Set Systemd Interval" => {
             handle_poll_interval_prompt(bot, msg, state, Subsystem::Systemd).await?
+        }
+        "🕐 Set Docker Tracker Interval" => {
+            handle_poll_interval_prompt(bot, msg, state, Subsystem::DockerTracker).await?
         }
         "🔑 Authenticate" => handle_auth_prompt(bot, msg, state).await?,
         "❌ Cancel" => {

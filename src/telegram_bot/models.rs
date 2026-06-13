@@ -6,9 +6,10 @@ use teloxide::types::ChatId;
 
 use super::utils::escape_mdv2;
 use crate::{
+    docker_tracker::{self, ContainerHealth},
     prelude::*,
-    process_tracker::ProcessSignal,
-    system_resources::{RefreshMask, Thresholds},
+    process_tracker::{self, ProcessSignal},
+    system_resources::{self, RefreshMask, Thresholds},
     systemd::{self, UnitActiveState},
     utils::{format_bytes, format_uptime},
 };
@@ -164,6 +165,7 @@ pub enum Subsystem {
     ScreenCapture,
     SystemResources,
     Systemd,
+    DockerTracker,
 }
 
 impl Subsystem {
@@ -173,6 +175,7 @@ impl Subsystem {
             Subsystem::ScreenCapture => "Screen Capture",
             Subsystem::SystemResources => "System Resources",
             Subsystem::Systemd => "Systemd",
+            Subsystem::DockerTracker => "Docker Tracker",
         }
     }
 }
@@ -296,6 +299,45 @@ impl SystemResourcesCallbackAction {
     }
 }
 
+/// Inline-button callback actions for docker container commands.
+/// Encoded as `"dc_<action>:<id>"`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DockerCallbackAction {
+    Stop { id: String },
+    Start { id: String },
+    Kill { id: String },
+    Restart { id: String },
+    Pause { id: String },
+    Unpause { id: String },
+}
+
+impl DockerCallbackAction {
+    pub fn encode(&self) -> String {
+        match self {
+            DockerCallbackAction::Stop { id } => format!("dc_stop:{id}"),
+            DockerCallbackAction::Start { id } => format!("dc_start:{id}"),
+            DockerCallbackAction::Kill { id } => format!("dc_kill:{id}"),
+            DockerCallbackAction::Restart { id } => format!("dc_restart:{id}"),
+            DockerCallbackAction::Pause { id } => format!("dc_pause:{id}"),
+            DockerCallbackAction::Unpause { id } => format!("dc_unpause:{id}"),
+        }
+    }
+
+    pub fn decode(s: &str) -> Option<Self> {
+        let (prefix, id) = s.split_once(':')?;
+        let id = id.to_string();
+        match prefix {
+            "dc_stop" => Some(DockerCallbackAction::Stop { id }),
+            "dc_start" => Some(DockerCallbackAction::Start { id }),
+            "dc_kill" => Some(DockerCallbackAction::Kill { id }),
+            "dc_restart" => Some(DockerCallbackAction::Restart { id }),
+            "dc_pause" => Some(DockerCallbackAction::Pause { id }),
+            "dc_unpause" => Some(DockerCallbackAction::Unpause { id }),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthState {
     Unauthenticated,
@@ -317,7 +359,7 @@ impl TelegramBot {
 
 pub struct TelegramDisplay<'a, T>(pub &'a T);
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::ProcessSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, process_tracker::ProcessSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
         write!(
@@ -353,7 +395,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::Proce
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::ProcessTree> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, process_tracker::ProcessTree> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let t = self.0; // Header
         let status_icon = if t.work_done { "✅" } else { "⏳" };
@@ -379,7 +421,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::process_tracker::Proce
     }
 }
 
-impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_resources::SystemSnapshot> {
+impl<'a> std::fmt::Display for TelegramDisplay<'a, system_resources::SystemSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = self.0;
 
@@ -592,21 +634,10 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, crate::system_resources::Syst
     }
 }
 
-fn unit_state_emoji(state: &UnitActiveState) -> &'static str {
-    match state {
-        UnitActiveState::Active => "🟢",
-        UnitActiveState::Reloading => "🔄",
-        UnitActiveState::Inactive => "⚫",
-        UnitActiveState::Failed => "🔴",
-        UnitActiveState::Activating => "🟡",
-        UnitActiveState::Deactivating => "🟠",
-    }
-}
-
 impl<'a> std::fmt::Display for TelegramDisplay<'a, systemd::UnitSnapshot> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let u = self.0;
-        let emoji = unit_state_emoji(&u.active_state);
+        let emoji = super::utils::unit_state_emoji(&u.active_state);
 
         writeln!(
             f,
@@ -674,6 +705,71 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, systemd::SystemdSnapshot> {
             }
         }
 
+        Ok(())
+    }
+}
+
+impl<'a> std::fmt::Display for TelegramDisplay<'a, docker_tracker::ContainerSnapshot> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let c = self.0;
+        let status_emoji = super::utils::container_status_emoji(&c.status);
+        let health_emoji = super::utils::container_health_emoji(&c.health);
+        // Header
+        writeln!(
+            f,
+            "{status_emoji} *{name}* `{short_id}`",
+            name = escape_mdv2(&c.name),
+            short_id = escape_mdv2(&c.short_id),
+        )?;
+        writeln!(f, "   ├ Image: `{}`", escape_mdv2(&c.image))?;
+        writeln!(
+            f,
+            "   ├ Status: `{}`",
+            escape_mdv2(&format!("{:?}", c.status).to_lowercase()),
+        )?;
+        // Health — only show if a HEALTHCHECK is defined
+        if c.health != ContainerHealth::None {
+            writeln!(
+                f,
+                "   ├ Health: {health_emoji} `{}`",
+                escape_mdv2(&format!("{:?}", c.health).to_lowercase()),
+            )?;
+        }
+        // Stats — optional block
+        match &c.stats {
+            None => {
+                write!(f, "   └ Stats: `unavailable`")?;
+            }
+            Some(s) => {
+                writeln!(f, "   ├ CPU: `{:.1}%`", s.cpu_percent)?;
+
+                let mem_str = if let Some(pct) = s.memory_percent {
+                    format!(
+                        "`{}` / `{}` \\(`{:.1}%`\\)",
+                        escape_mdv2(&format_bytes(s.memory_bytes)),
+                        escape_mdv2(&format_bytes(s.memory_limit_bytes)),
+                        pct * 100.0,
+                    )
+                } else {
+                    format!("`{}`", escape_mdv2(&format_bytes(s.memory_bytes)))
+                };
+                writeln!(f, "   ├ Mem: {mem_str}")?;
+
+                writeln!(
+                    f,
+                    "   ├ Net: ↓ `{}` ↑ `{}`",
+                    escape_mdv2(&format_bytes(s.net_rx_bytes)),
+                    escape_mdv2(&format_bytes(s.net_tx_bytes)),
+                )?;
+                writeln!(
+                    f,
+                    "   ├ Block: R `{}` W `{}`",
+                    escape_mdv2(&format_bytes(s.block_read_bytes)),
+                    escape_mdv2(&format_bytes(s.block_write_bytes)),
+                )?;
+                write!(f, "   └ PIDs: `{}`", s.pid_count)?;
+            }
+        }
         Ok(())
     }
 }

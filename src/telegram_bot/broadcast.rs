@@ -13,7 +13,13 @@ pub async fn event_notifier(
     let mut process_tracker_rx = crate::process_tracker::subscribe_events();
     let mut system_resources_rx = crate::system_resources::subscribe_events();
     let mut systemd_rx = crate::systemd::subscribe_events();
-    if crate::all_none!(process_tracker_rx, system_resources_rx, systemd_rx) {
+    let mut docker_tracker_rx = crate::docker_tracker::subscribe_events();
+    if crate::all_none!(
+        process_tracker_rx,
+        system_resources_rx,
+        systemd_rx,
+        docker_tracker_rx
+    ) {
         return;
     }
     loop {
@@ -38,6 +44,12 @@ pub async fn event_notifier(
             }
             event = recv_or_pending(&mut systemd_rx, "telegram: systemd") => {
                 let message = super::utils::format_systemd_event(&event);
+                if let Some(msg) = message {
+                    broadcast_message(&bot, &mut state, &msg).await;
+                }
+            }
+            event = recv_or_pending(&mut docker_tracker_rx, "telegram: docker tracker") => {
+                let message = super::utils::format_docker_tracker_event(&event);
                 if let Some(msg) = message {
                     broadcast_message(&bot, &mut state, &msg).await;
                 }

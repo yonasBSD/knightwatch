@@ -1,6 +1,8 @@
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup};
 
-use super::models::{ProcessCallbackAction, Subsystem, SystemResourcesCallbackAction};
+use super::models::{
+    DockerCallbackAction, ProcessCallbackAction, Subsystem, SystemResourcesCallbackAction,
+};
 use crate::system_resources::{RefreshMask, Thresholds};
 
 pub fn main_keyboard() -> KeyboardMarkup {
@@ -15,13 +17,16 @@ pub fn main_keyboard() -> KeyboardMarkup {
         ],
         vec![
             KeyboardButton::new("🔧 Systemd"),
+            KeyboardButton::new("🐳 Docker"),
+        ],
+        vec![
             KeyboardButton::new("⚙️ Settings"),
+            KeyboardButton::new("📋 Help"),
         ],
         vec![
             KeyboardButton::new("🔑 Authenticate"),
-            KeyboardButton::new("📋 Help"),
+            KeyboardButton::new("🔴 Stop"),
         ],
-        vec![KeyboardButton::new("🔴 Stop")],
     ])
     .resize_keyboard()
 }
@@ -163,6 +168,54 @@ pub fn system_resources_keyboard() -> InlineKeyboardMarkup {
                     gpus: false,
                 })
                 .encode(),
+            ),
+        ],
+    ])
+}
+
+pub fn docker_keyboard() -> KeyboardMarkup {
+    KeyboardMarkup::new([
+        vec![
+            KeyboardButton::new("📋 Docker Containers"),
+            KeyboardButton::new("🔥 By CPU (Docker)"),
+        ],
+        vec![
+            KeyboardButton::new("🧠 By Memory (Docker)"),
+            KeyboardButton::new("❌ Cancel"),
+        ],
+    ])
+    .resize_keyboard()
+}
+
+/// Inline action buttons attached to a single container message.
+pub fn docker_container_keyboard(id: &str) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new([
+        vec![
+            InlineKeyboardButton::callback(
+                "▶️ Start",
+                DockerCallbackAction::Start { id: id.to_string() }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏹ Stop",
+                DockerCallbackAction::Stop { id: id.to_string() }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "💀 Kill",
+                DockerCallbackAction::Kill { id: id.to_string() }.encode(),
+            ),
+        ],
+        vec![
+            InlineKeyboardButton::callback(
+                "🔄 Restart",
+                DockerCallbackAction::Restart { id: id.to_string() }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "⏸️ Pause",
+                DockerCallbackAction::Pause { id: id.to_string() }.encode(),
+            ),
+            InlineKeyboardButton::callback(
+                "▶️ Unpause",
+                DockerCallbackAction::Unpause { id: id.to_string() }.encode(),
             ),
         ],
     ])

@@ -1,8 +1,9 @@
 use super::models::TelegramDisplay;
 use crate::{
+    docker_tracker::{ContainerHealth, ContainerStatus, DockerTrackerEvent},
     process_tracker::ProcessTrackerEvent,
     system_resources::{BatteryState, SystemHealth, SystemResourcesEvent},
-    systemd::SystemdEvent,
+    systemd::{SystemdEvent, UnitActiveState},
 };
 
 const SPECIAL: &[char] = &[
@@ -65,7 +66,7 @@ pub fn format_process_tracker_event(event: &ProcessTrackerEvent) -> String {
             } else {
                 format!("✅ *Failed to killed process*\nPID: `{pid}`")
             }
-        },
+        }
     }
 }
 
@@ -157,6 +158,145 @@ pub fn format_systemd_event(event: &SystemdEvent) -> Option<String> {
              └ Unit: `{unit}`",
             unit = escape_mdv2(unit_name),
         )),
+    }
+}
+
+pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String> {
+    match event {
+        DockerTrackerEvent::InitialSnapshot { containers } => {
+            if containers.is_empty() {
+                return Some("🐳 *Docker Started* — no containers found\\.".to_string());
+            }
+            let body = containers
+                .iter()
+                .map(|c| TelegramDisplay(c).to_string())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            Some(format!(
+                "🐳 *Docker Started* \\({}\\)\n\n{body}",
+                containers.len()
+            ))
+        }
+        DockerTrackerEvent::ContainersAppeared { containers } => {
+            let body = containers
+                .iter()
+                .map(|c| TelegramDisplay(c).to_string())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            Some(format!(
+                "🆕 *Containers Appeared* \\({}\\)\n\n{body}",
+                containers.len()
+            ))
+        }
+        DockerTrackerEvent::ContainersDisappeared { containers } => {
+            let lines = containers
+                .iter()
+                .map(|c| {
+                    format!(
+                        "• `{}` `{}`",
+                        escape_mdv2(&c.name),
+                        escape_mdv2(&c.short_id)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Some(format!(
+                "👻 *Containers Disappeared* \\({}\\)\n{lines}",
+                containers.len()
+            ))
+        }
+        DockerTrackerEvent::ContainerStatusChanged {
+            container,
+            previous,
+        } => {
+            let prev = escape_mdv2(&previous.to_string());
+            let now = escape_mdv2(&container.status.to_string());
+            Some(format!(
+                "🔄 *Container Status Changed*\n\
+                 ├ Name: `{name}`\n\
+                 ├ Was: `{prev}`\n\
+                 └ Now: `{now}`",
+                name = escape_mdv2(&container.name),
+            ))
+        }
+        DockerTrackerEvent::ContainerHealthChanged {
+            container,
+            previous,
+        } => {
+            let prev = escape_mdv2(&previous.to_string());
+            let now = escape_mdv2(&container.health.to_string());
+            Some(format!(
+                "🏥 *Container Health Changed*\n\
+                 ├ Name: `{name}`\n\
+                 ├ Was: `{prev}`\n\
+                 └ Now: `{now}`",
+                name = escape_mdv2(&container.name),
+            ))
+        }
+        DockerTrackerEvent::ContainerOomKilled { id, name } => Some(format!(
+            "💥 *Container OOM Killed*\n\
+             ├ Name: `{name}`\n\
+             └ ID: `{id}`",
+            name = escape_mdv2(name),
+            id = escape_mdv2(id),
+        )),
+        DockerTrackerEvent::ContainerActionResult {
+            id,
+            name,
+            action,
+            success,
+        } => {
+            let action_str = escape_mdv2(&action.to_string());
+            let name_str = escape_mdv2(name);
+            let id_str = escape_mdv2(id);
+            if *success {
+                Some(format!(
+                    "✅ *Container {action_str}* succeeded\n\
+                     ├ Name: `{name_str}`\n\
+                     └ ID: `{id_str}`"
+                ))
+            } else {
+                Some(format!(
+                    "❌ *Container {action_str}* failed\n\
+                     ├ Name: `{name_str}`\n\
+                     └ ID: `{id_str}`"
+                ))
+            }
+        }
+    }
+}
+
+pub fn unit_state_emoji(state: &UnitActiveState) -> &'static str {
+    match state {
+        UnitActiveState::Active => "🟢",
+        UnitActiveState::Reloading => "🔄",
+        UnitActiveState::Inactive => "⚫",
+        UnitActiveState::Failed => "🔴",
+        UnitActiveState::Activating => "🟡",
+        UnitActiveState::Deactivating => "🟠",
+    }
+}
+
+pub fn container_status_emoji(status: &ContainerStatus) -> &'static str {
+    match status {
+        ContainerStatus::Running => "🟢",
+        ContainerStatus::Paused => "🟡",
+        ContainerStatus::Restarting => "🔄",
+        ContainerStatus::Exited => "⚫",
+        ContainerStatus::Dead => "🔴",
+        ContainerStatus::Created => "🔵",
+        ContainerStatus::Removing => "🟠",
+        ContainerStatus::Stopping => "🟠",
+        ContainerStatus::Unknown(_) => "❓",
+    }
+}
+
+pub fn container_health_emoji(health: &ContainerHealth) -> &'static str {
+    match health {
+        ContainerHealth::Healthy => "💚",
+        ContainerHealth::Unhealthy => "❤️",
+        ContainerHealth::Starting => "🤍",
+        ContainerHealth::None | ContainerHealth::Unknown => "🩶",
     }
 }
 

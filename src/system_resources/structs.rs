@@ -281,8 +281,8 @@ pub struct BatterySnapshot {
     pub health_percent: Option<f32>,
 }
 
-impl From<battery::Battery> for BatterySnapshot {
-    fn from(battery: battery::Battery) -> Self {
+impl From<starship_battery::Battery> for BatterySnapshot {
+    fn from(battery: starship_battery::Battery) -> Self {
         Self {
             charge_percent: battery.state_of_charge().value * 100.0,
             state: battery.state().into(),

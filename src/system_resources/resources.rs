@@ -1,4 +1,3 @@
-use battery::Manager as BatterManager;
 use nvml_wrapper::Nvml;
 use std::sync::OnceLock;
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, System};
@@ -417,7 +416,7 @@ impl SystemResources {
     }
 
     fn build_battery_snapshot(&self) -> Option<BatterySnapshot> {
-        BatterManager::new()
+        starship_battery::Manager::new()
             .ok()?
             .batteries()
             .ok()?

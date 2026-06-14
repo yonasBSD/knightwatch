@@ -148,12 +148,12 @@ impl std::fmt::Display for BatteryState {
     }
 }
 
-impl From<battery::State> for BatteryState {
-    fn from(state: battery::State) -> Self {
+impl From<starship_battery::State> for BatteryState {
+    fn from(state: starship_battery::State) -> Self {
         match state {
-            battery::State::Charging => Self::Charging,
-            battery::State::Discharging => Self::Discharging,
-            battery::State::Full => Self::Full,
+            starship_battery::State::Charging => Self::Charging,
+            starship_battery::State::Discharging => Self::Discharging,
+            starship_battery::State::Full => Self::Full,
             _ => Self::Unknown,
         }
     }

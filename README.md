@@ -23,6 +23,8 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 - **System Resources Commands** — Set tresholds, refresh masks and control polling via API or Telegram (requires `--allow-system-resources-commands`)
 - **Systemd Monitor** — Live systemd unit tracking with active/failed/inactive counts, per-unit state, resource usage, and change events (Linux only)
 - **Systemd Commands** — control polling via API or Telegram (requires `--allow-systemd-commands`)
+- **Docker Containers Monitor** — Monitor docker containers and track their resource usages
+- **Docker Commands** — Manager Containers and control polling via API or Telegram (requires `--allow-docker-commands`)
 - **Telegram Bot** — Optional bot for remote monitoring, push notifications, and process commands
 - **Webhook Dispatcher** — POST process and system events to one or more URLs with automatic retry
 
@@ -86,6 +88,9 @@ knightwatch --system-resources
 # Track systemd units (Linux only)
 knightwatch --systemd
 
+# Track docker containers
+knightwatch --docker
+
 # Track top processes by CPU/memory
 knightwatch --top-processes
 
@@ -118,6 +123,7 @@ knightwatch --pid <PID> --allow-process-commands
 | `--blind` | `false` | Disable screen capture |
 | `--system-resources` | `false` | Enable CPU, memory, disk, network, battery, and thermal monitoring |
 | `--systemd` | `false` | Enable systemd monitor (Linux only) |
+| `--docker` | `false` | Enable docker tracker |
 | `--telegram` | `false` | Enable the Telegram bot |
 | `--with-webhook` | `false` | Enable webhook dispatching |
 | `--webhook <URL>` | — | Webhook target URL (repeatable) |
@@ -127,6 +133,7 @@ knightwatch --pid <PID> --allow-process-commands
 | `--allow-screen-commands` | `false` | Enable screen command endpoints (poll control) — **always requires authentication** |
 | `--allow-system-resources-commands` | `false` | Enable system resources command endpoints (set tresholds, refresh masks, poll control) — **always requires authentication** |
 | `--allow-systemd-commands` | `false` | Enable systemd command endpoints (poll control) — **always requires authentication** |
+| `--allow-docker-commands` | `false` | Enable docker command endpoints (manager containers, poll control) — **always requires authentication** |
 
 > **Note:** `allowing commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
 
@@ -148,6 +155,7 @@ Full reference documentation is available in the [Wiki](https://github.com/YofaG
 - [Process Tracker](https://github.com/YofaGh/knightwatch/wiki/Process-Tracker) — Process tracking, commands, and events
 - [System Resources Monitor](https://github.com/YofaGh/knightwatch/wiki/System-Resources-Monitor) — Hardware telemetry and thresholds
 - [Systemd Monitor](https://github.com/YofaGh/knightwatch/wiki/Systemd-Monitor) — Unit tracking and events (Linux only)
+- [Docker Tracker](https://github.com/YofaGh/knightwatch/wiki/Docker-Tracker) — Docker containers tracking, commands and events
 - [Telegram Bot](https://github.com/YofaGh/knightwatch/wiki/Telegram-Bot) — Setup, commands, and notifications
 - [Webhooks](https://github.com/YofaGh/knightwatch/wiki/Webhooks) — Payload format and event catalogue
 - [Authentication](https://github.com/YofaGh/knightwatch/wiki/Authentication) — User management and API auth

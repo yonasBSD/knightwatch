@@ -1,9 +1,7 @@
-use std::sync::Arc;
 use teloxide::{
     prelude::*,
     types::{ParseMode, ReplyMarkup},
 };
-use tokio::sync::mpsc;
 
 use super::super::{
     broadcast::send_chat_state,
@@ -27,7 +25,7 @@ pub async fn handle_auth_prompt(bot: Bot, msg: Message, state: State) -> Result<
 pub async fn handle_auth_token(
     bot: Bot,
     msg: Message,
-    chat_state_tx: Arc<mpsc::Sender<(ChatId, AuthState)>>,
+    chat_state_tx: std::sync::Arc<tokio::sync::mpsc::Sender<(ChatId, AuthState)>>,
     state: State,
     token_input: String,
 ) -> Result<()> {

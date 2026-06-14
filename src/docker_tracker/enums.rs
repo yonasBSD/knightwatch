@@ -1,3 +1,4 @@
+use bollard::config::ContainerSummaryStateEnum;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
@@ -12,20 +13,14 @@ use crate::types::Result;
 #[derive(Debug, Clone)]
 pub enum DockerTrackerEvent {
     /// Emitted once on the very first tick with every container currently running.
-    InitialSnapshot {
-        containers: Vec<ContainerSnapshot>,
-    },
+    InitialSnapshot { containers: Vec<ContainerSnapshot> },
 
     /// One or more containers that weren't present last tick are now running.
-    ContainersAppeared {
-        containers: Vec<ContainerSnapshot>,
-    },
+    ContainersAppeared { containers: Vec<ContainerSnapshot> },
 
     /// One or more containers that were present last tick are no longer listed.
     /// Carries the last known snapshot so callers have name/image context.
-    ContainersDisappeared {
-        containers: Vec<ContainerSnapshot>,
-    },
+    ContainersDisappeared { containers: Vec<ContainerSnapshot> },
 
     /// A container's lifecycle status changed (e.g. running → exited).
     ContainerStatusChanged {
@@ -41,10 +36,7 @@ pub enum DockerTrackerEvent {
 
     /// A container was OOM-killed by the kernel. Derived from the Docker events
     /// stream (`oom` action) rather than poll diffing.
-    ContainerOomKilled {
-        id: String,
-        name: String,
-    },
+    ContainerOomKilled { id: String, name: String },
 
     /// A container action was performed via a `DockerTrackerCommand`.
     ContainerActionResult {
@@ -168,23 +160,7 @@ pub enum ContainerStatus {
 }
 
 impl ContainerStatus {
-    // pub fn from_str(s: &str) -> Self {
-    //     match s {
-    //         "created" => Self::Created,
-    //         "running" => Self::Running,
-    //         "paused" => Self::Paused,
-    //         "restarting" => Self::Restarting,
-    //         "removing" => Self::Removing,
-    //         "exited" => Self::Exited,
-    //         "dead" => Self::Dead,
-    //         "stopping" => Self::Stopping,
-    //         other => Self::Unknown(other.to_owned()),
-    //     }
-    // }
-    pub fn from_state_enum(
-        state: Option<&bollard::config::ContainerSummaryStateEnum>,
-    ) -> Self {
-        use bollard::config::ContainerSummaryStateEnum;
+    pub fn from_state_enum(state: Option<&ContainerSummaryStateEnum>) -> Self {
         match state {
             Some(ContainerSummaryStateEnum::CREATED) => Self::Created,
             Some(ContainerSummaryStateEnum::RUNNING) => Self::Running,

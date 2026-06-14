@@ -161,21 +161,18 @@ pub fn format_systemd_event(event: &SystemdEvent) -> Option<String> {
     }
 }
 
-pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String> {
+pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> String {
     match event {
         DockerTrackerEvent::InitialSnapshot { containers } => {
             if containers.is_empty() {
-                return Some("🐳 *Docker Started* — no containers found\\.".to_string());
+                return "🐳 *Docker Started* — no containers found\\.".to_string();
             }
             let body = containers
                 .iter()
                 .map(|c| TelegramDisplay(c).to_string())
                 .collect::<Vec<_>>()
                 .join("\n\n");
-            Some(format!(
-                "🐳 *Docker Started* \\({}\\)\n\n{body}",
-                containers.len()
-            ))
+            format!("🐳 *Docker Started* \\({}\\)\n\n{body}", containers.len())
         }
         DockerTrackerEvent::ContainersAppeared { containers } => {
             let body = containers
@@ -183,10 +180,10 @@ pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String>
                 .map(|c| TelegramDisplay(c).to_string())
                 .collect::<Vec<_>>()
                 .join("\n\n");
-            Some(format!(
+            format!(
                 "🆕 *Containers Appeared* \\({}\\)\n\n{body}",
                 containers.len()
-            ))
+            )
         }
         DockerTrackerEvent::ContainersDisappeared { containers } => {
             let lines = containers
@@ -200,10 +197,10 @@ pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String>
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            Some(format!(
+            format!(
                 "👻 *Containers Disappeared* \\({}\\)\n{lines}",
                 containers.len()
-            ))
+            )
         }
         DockerTrackerEvent::ContainerStatusChanged {
             container,
@@ -211,13 +208,13 @@ pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String>
         } => {
             let prev = escape_mdv2(&previous.to_string());
             let now = escape_mdv2(&container.status.to_string());
-            Some(format!(
+            format!(
                 "🔄 *Container Status Changed*\n\
                  ├ Name: `{name}`\n\
                  ├ Was: `{prev}`\n\
                  └ Now: `{now}`",
                 name = escape_mdv2(&container.name),
-            ))
+            )
         }
         DockerTrackerEvent::ContainerHealthChanged {
             container,
@@ -225,21 +222,21 @@ pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String>
         } => {
             let prev = escape_mdv2(&previous.to_string());
             let now = escape_mdv2(&container.health.to_string());
-            Some(format!(
+            format!(
                 "🏥 *Container Health Changed*\n\
                  ├ Name: `{name}`\n\
                  ├ Was: `{prev}`\n\
                  └ Now: `{now}`",
                 name = escape_mdv2(&container.name),
-            ))
+            )
         }
-        DockerTrackerEvent::ContainerOomKilled { id, name } => Some(format!(
+        DockerTrackerEvent::ContainerOomKilled { id, name } => format!(
             "💥 *Container OOM Killed*\n\
              ├ Name: `{name}`\n\
              └ ID: `{id}`",
             name = escape_mdv2(name),
             id = escape_mdv2(id),
-        )),
+        ),
         DockerTrackerEvent::ContainerActionResult {
             id,
             name,
@@ -250,17 +247,17 @@ pub fn format_docker_tracker_event(event: &DockerTrackerEvent) -> Option<String>
             let name_str = escape_mdv2(name);
             let id_str = escape_mdv2(id);
             if *success {
-                Some(format!(
+                format!(
                     "✅ *Container {action_str}* succeeded\n\
                      ├ Name: `{name_str}`\n\
                      └ ID: `{id_str}`"
-                ))
+                )
             } else {
-                Some(format!(
+                format!(
                     "❌ *Container {action_str}* failed\n\
                      ├ Name: `{name_str}`\n\
                      └ ID: `{id_str}`"
-                ))
+                )
             }
         }
     }

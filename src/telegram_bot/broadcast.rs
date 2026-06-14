@@ -50,9 +50,7 @@ pub async fn event_notifier(
             }
             event = recv_or_pending(&mut docker_tracker_rx, "telegram: docker tracker") => {
                 let message = super::utils::format_docker_tracker_event(&event);
-                if let Some(msg) = message {
-                    broadcast_message(&bot, &mut state, &msg).await;
-                }
+                broadcast_message(&bot, &mut state, &message).await;
             }
         }
     }

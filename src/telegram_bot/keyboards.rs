@@ -1,8 +1,6 @@
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup};
 
-use super::models::{
-    DockerCallbackAction, ProcessCallbackAction, Subsystem, SystemResourcesCallbackAction,
-};
+use super::models::{DockerCallbackAction, ProcessCallbackAction, SystemResourcesCallbackAction};
 use crate::system_resources::{RefreshMask, Thresholds};
 
 pub fn main_keyboard() -> KeyboardMarkup {
@@ -84,7 +82,7 @@ pub fn polling_subsystem_keyboard() -> KeyboardMarkup {
     .resize_keyboard()
 }
 
-pub fn subsystem_polling_keyboard(subsystem: &Subsystem) -> KeyboardMarkup {
+pub fn subsystem_polling_keyboard(subsystem: &super::models::Subsystem) -> KeyboardMarkup {
     let label = subsystem.label();
     KeyboardMarkup::new([
         vec![

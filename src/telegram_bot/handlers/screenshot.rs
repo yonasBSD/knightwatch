@@ -3,17 +3,17 @@ use teloxide::{
     types::{InputFile, InputMedia, InputMediaPhoto},
 };
 
-use super::super::models::State;
-use super::auth::send_auth_first_message;
-use crate::{prelude::*, screen_capture};
-
-pub async fn handle_screenshot(bot: Bot, msg: Message, state: State) -> Result<()> {
+pub async fn handle_screenshot(
+    bot: Bot,
+    msg: Message,
+    state: super::super::models::State,
+) -> crate::types::Result<()> {
     if !state.is_authorized(msg.chat.id) {
-        return send_auth_first_message(bot, msg.chat.id).await;
+        return super::auth::send_auth_first_message(bot, msg.chat.id).await;
     }
     bot.send_message(msg.chat.id, "🖼️ Taking Screenshots...")
         .await?;
-    let images = screen_capture::get_screenshots().await;
+    let images = crate::screen_capture::get_screenshots().await;
     if images.is_empty() {
         bot.send_message(msg.chat.id, "🖼️ No Images were provided.")
             .await?;

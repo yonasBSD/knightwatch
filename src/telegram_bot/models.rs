@@ -6,11 +6,11 @@ use teloxide::types::ChatId;
 
 use super::utils::escape_mdv2;
 use crate::{
-    docker_tracker::{self, ContainerHealth},
+    docker_tracker,
     prelude::*,
     process_tracker::{self, ProcessSignal},
     system_resources::{self, RefreshMask, Thresholds},
-    systemd::{self, UnitActiveState},
+    systemd,
     utils::{format_bytes, format_uptime},
 };
 
@@ -690,7 +690,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, systemd::SystemdSnapshot> {
             let failed_units: Vec<_> = s
                 .units
                 .iter()
-                .filter(|u| u.active_state == UnitActiveState::Failed)
+                .filter(|u| u.active_state == systemd::UnitActiveState::Failed)
                 .collect();
             if !failed_units.is_empty() {
                 writeln!(f, "\n🔴 *Failed Units:*")?;
@@ -728,7 +728,7 @@ impl<'a> std::fmt::Display for TelegramDisplay<'a, docker_tracker::ContainerSnap
             escape_mdv2(&format!("{:?}", c.status).to_lowercase()),
         )?;
         // Health — only show if a HEALTHCHECK is defined
-        if c.health != ContainerHealth::None {
+        if c.health != docker_tracker::ContainerHealth::None {
             writeln!(
                 f,
                 "   ├ Health: {health_emoji} `{}`",

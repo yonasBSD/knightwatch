@@ -130,7 +130,7 @@ impl ScreenCapture {
     fn screenshot_monitors_blocking() -> Result<Vec<Screenshot>> {
         Self::get_monitors()?
             .into_iter()
-            .map(|screen| Self::take_screenshot(&screen))
+            .map(Self::take_screenshot)
             .collect()
     }
 
@@ -138,7 +138,7 @@ impl ScreenCapture {
         Monitor::all().map_err(|e| Error::Screen(format!("Failed to get monitors: {e}")))
     }
 
-    fn take_screenshot(monitor: &Monitor) -> Result<Screenshot> {
+    fn take_screenshot(monitor: Monitor) -> Result<Screenshot> {
         let rgba_img = monitor
             .capture_image()
             .map_err(|e| Error::Screen(format!("Failed to capture: {e}")))?;

@@ -1,6 +1,6 @@
 {
   "name": "knightwatch-dashboard",
-  "version": "1.0.0",
+  "version": "1.0.15",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "svelte": "^5.55.5",
+    "svelte": "^5.56.3",
     "vite": "^8.0.10"
   }
 }

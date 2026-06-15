@@ -1,6 +1,3 @@
-use std::io::Error as IoError;
-use teloxide::errors::RequestError;
-
 #[derive(Debug)]
 pub enum Error {
     Network(String),
@@ -16,7 +13,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn bind_address(address: &str, err: IoError) -> Self {
+    pub fn bind_address(address: &str, err: std::io::Error) -> Self {
         Self::Network(format!("Failed to bind address: {address}, {err}"))
     }
     pub fn channel_closed(err: tokio::sync::oneshot::error::RecvError) -> Self {
@@ -73,8 +70,8 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl From<RequestError> for Error {
-    fn from(err: RequestError) -> Self {
+impl From<teloxide::errors::RequestError> for Error {
+    fn from(err: teloxide::errors::RequestError) -> Self {
         Error::TelegramBot(err.to_string())
     }
 }

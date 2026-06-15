@@ -92,6 +92,15 @@ pub struct CliArgs {
     pub allow_docker_commands: bool,
 }
 
+impl CliArgs {
+    pub fn is_blind(&self) -> bool {
+        #[cfg(feature = "screenshot")]
+        return self.blind;
+        #[cfg(not(feature = "screenshot"))]
+        return true;
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Manage persistent configuration

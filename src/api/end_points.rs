@@ -4,7 +4,7 @@ use axum::{
     response::Json,
 };
 use axum_extra::{TypedHeader, headers};
-use base64::{Engine, engine::general_purpose};
+use std::time::Duration;
 
 use super::{models::*, utils::*};
 use crate::{
@@ -23,39 +23,13 @@ pub async fn shutdown(
 }
 
 pub async fn health() -> Json<HealthResponse> {
-    let uptime = super::handlers::START_TIME
-        .get()
-        .map(|t| t.elapsed().as_secs())
-        .unwrap_or(0);
-    Json(HealthResponse {
-        status: "healthy".to_string(),
-        timestamp: now_rfc3339(),
-        version: crate::utils::get_version().to_string(),
-        uptime: crate::utils::format_uptime(uptime),
-    })
+    Json(HealthResponse::new())
 }
 
 pub async fn info() -> Json<InfoResponse> {
-    let args = &crate::prelude::get_config().args;
-    Json(InfoResponse {
-        auth_enabled: args.enable_auth,
-        #[cfg(feature = "screenshot")]
-        blind: args.blind,
-        #[cfg(not(feature = "screenshot"))]
-        blind: true,
-        pid: process_tracker::get_root_pids().await,
-        top_processes: args.top_processes,
-        limit_processes: args.limit_processes,
-        telegram_bot: args.telegram,
-        system_resources: args.system_resources,
-        systemd: args.systemd,
-        docker: args.docker,
-        allow_process_commands: args.allow_process_commands,
-        allow_screen_commands: args.allow_screen_commands,
-        allow_system_resources_commands: args.allow_system_resources_commands,
-        allow_systemd_commands: args.allow_systemd_commands,
-        allow_docker_commands: args.allow_docker_commands,
-    })
+    Json(InfoResponse::from_pids(
+        process_tracker::get_root_pids().await,
+    ))
 }
 
 pub async fn login(Json(body): Json<LoginRequest>) -> Result<Json<LoginResponse>, StatusCode> {
@@ -103,18 +77,7 @@ pub async fn screenshot() -> Result<Json<ScreenshotResponse>, (StatusCode, Strin
             "No screens found".to_string(),
         ));
     }
-    let screens: Vec<ScreenshotImage> = images
-        .into_iter()
-        .map(|s| ScreenshotImage {
-            data: general_purpose::STANDARD.encode(&s.image),
-            mime: "image/png".to_string(),
-            monitor_name: s.monitor_name,
-            monitor_id: s.monitor_id,
-            width: s.width,
-            height: s.height,
-            timestamp: s.timestamp,
-        })
-        .collect();
+    let screens: Vec<ScreenshotImage> = images.into_iter().map(Into::into).collect();
     let count = screens.len();
     Ok(Json(ScreenshotResponse { screens, count }))
 }
@@ -146,8 +109,7 @@ pub async fn screen_capture_resume_poll() -> Result<StatusCode, (StatusCode, Str
 pub async fn screen_capture_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let interval = tokio::time::Duration::from_millis(body.interval_ms);
-    screen_capture::set_poll_interval(interval)
+    screen_capture::set_poll_interval(Duration::from_millis(body.interval_ms))
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
@@ -191,18 +153,17 @@ pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
 pub async fn process_root(
     Path(root_pid): Path<u32>,
 ) -> Result<Json<ProcessSnapshot>, (StatusCode, String)> {
-    match process_tracker::get_root(root_pid).await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("Root process is not running".to_string())),
-    }
+    process_tracker::get_root(root_pid)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("Root process is not running".to_string()))
 }
 
 /// `GET /process/children/{pid}`
 ///
 /// Returns snapshots of all currently live child processes of a given root pid.
 pub async fn process_children(Path(root_pid): Path<u32>) -> Json<Vec<ProcessSnapshot>> {
-    let children = process_tracker::get_children(root_pid).await;
-    Json(children)
+    Json(process_tracker::get_children(root_pid).await)
 }
 
 /// `GET /process/status/{pid}`
@@ -315,8 +276,7 @@ pub async fn process_tracker_resume_poll() -> Result<StatusCode, (StatusCode, St
 pub async fn process_tracker_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let interval = tokio::time::Duration::from_millis(body.interval_ms);
-    process_tracker::set_poll_interval(interval)
+    process_tracker::set_poll_interval(Duration::from_millis(body.interval_ms))
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
@@ -331,20 +291,20 @@ pub async fn process_tracker_set_poll_interval(
 /// Returns the current System Snapshot.
 pub async fn system_snapshot()
 -> Result<Json<system_resources::SystemSnapshot>, (StatusCode, String)> {
-    match system_resources::get_snapshot().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No System Snapshot was found".to_string())),
-    }
+    system_resources::get_snapshot()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No System Snapshot was found".to_string()))
 }
 
 /// `GET /cpu`
 ///
 /// Returns the current Cpu Snapshot.
 pub async fn cpu_snapshot() -> Result<Json<system_resources::CpuSnapshot>, (StatusCode, String)> {
-    match system_resources::get_cpu().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No Cpu Snapshot was found".to_string())),
-    }
+    system_resources::get_cpu()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No Cpu Snapshot was found".to_string()))
 }
 
 /// `GET /memory`
@@ -352,10 +312,10 @@ pub async fn cpu_snapshot() -> Result<Json<system_resources::CpuSnapshot>, (Stat
 /// Returns the current Memory Snapshot.
 pub async fn memory_snapshot()
 -> Result<Json<system_resources::MemorySnapshot>, (StatusCode, String)> {
-    match system_resources::get_memory().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No Memory Snapshot was found".to_string())),
-    }
+    system_resources::get_memory()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No Memory Snapshot was found".to_string()))
 }
 
 /// `GET /disks`
@@ -384,10 +344,10 @@ pub async fn gpus_snapshots() -> Json<Vec<system_resources::GpuSnapshot>> {
 /// Returns the current Battery Snapshot.
 pub async fn battery_snapshot()
 -> Result<Json<system_resources::BatterySnapshot>, (StatusCode, String)> {
-    match system_resources::get_battery().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No battery Snapshot was found".to_string())),
-    }
+    system_resources::get_battery()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No battery Snapshot was found".to_string()))
 }
 
 /// `GET /host-info`
@@ -395,10 +355,10 @@ pub async fn battery_snapshot()
 /// Returns the current Host Info Snapshot.
 pub async fn host_info_snapshot() -> Result<Json<system_resources::HostInfo>, (StatusCode, String)>
 {
-    match system_resources::get_host_info().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No host info was found".to_string())),
-    }
+    system_resources::get_host_info()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No host info was found".to_string()))
 }
 
 /// `GET /temperatures`
@@ -468,8 +428,7 @@ pub async fn resources_resume_poll() -> Result<StatusCode, (StatusCode, String)>
 pub async fn resources_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let interval = tokio::time::Duration::from_millis(body.interval_ms);
-    system_resources::set_poll_interval(interval)
+    system_resources::set_poll_interval(Duration::from_millis(body.interval_ms))
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
@@ -483,10 +442,10 @@ pub async fn resources_set_poll_interval(
 ///
 /// Returns the current Systemd Snapshot.
 pub async fn systemd_snapshot() -> Result<Json<systemd::SystemdSnapshot>, (StatusCode, String)> {
-    match systemd::get_snapshot().await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No Systemd Snapshot was found".to_string())),
-    }
+    systemd::get_snapshot()
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No Systemd Snapshot was found".to_string()))
 }
 
 /// `GET /unit/{unit_name}`
@@ -495,10 +454,10 @@ pub async fn systemd_snapshot() -> Result<Json<systemd::SystemdSnapshot>, (Statu
 pub async fn unit_snapshot(
     Path(unit_name): Path<String>,
 ) -> Result<Json<UnitSnapshot>, (StatusCode, String)> {
-    match systemd::get_unit(unit_name).await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No Unit Snapshot was found".to_string())),
-    }
+    systemd::get_unit(unit_name)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No Unit Snapshot was found".to_string()))
 }
 
 /// `GET /units/{unit_state}`
@@ -537,8 +496,7 @@ pub async fn systemd_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
 pub async fn systemd_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let interval = tokio::time::Duration::from_millis(body.interval_ms);
-    systemd::set_poll_interval(interval)
+    systemd::set_poll_interval(Duration::from_millis(body.interval_ms))
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)
@@ -560,10 +518,10 @@ pub async fn list_docker_containers() -> Json<Vec<ContainerSnapshot>> {
 pub async fn get_docker_container(
     Path(id_or_name): Path<String>,
 ) -> Result<Json<ContainerSnapshot>, (StatusCode, String)> {
-    match docker_tracker::get_container(id_or_name).await {
-        Some(snap) => Ok(Json(snap)),
-        None => Err(not_found("No docker container was found".to_string())),
-    }
+    docker_tracker::get_container(id_or_name)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("No docker container was found".to_string()))
 }
 
 /// `GET /top-containers?sort=cpu&limit=10`
@@ -679,8 +637,7 @@ pub async fn docker_resume_poll() -> Result<StatusCode, (StatusCode, String)> {
 pub async fn docker_set_poll_interval(
     Json(body): Json<SetPollIntervalRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let interval = tokio::time::Duration::from_millis(body.interval_ms);
-    docker_tracker::set_poll_interval(interval)
+    docker_tracker::set_poll_interval(Duration::from_millis(body.interval_ms))
         .await
         .map_err(internal_server_error)?;
     Ok(StatusCode::OK)

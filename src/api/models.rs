@@ -1,11 +1,28 @@
 use serde::{Deserialize, Serialize};
 
+use crate::utils::now_rfc3339;
+
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: String,
     pub version: String,
     pub uptime: String,
+}
+
+impl HealthResponse {
+    pub fn new() -> Self {
+        let uptime = super::handlers::START_TIME
+            .get()
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0);
+        Self {
+            status: "healthy".to_string(),
+            timestamp: now_rfc3339(),
+            version: crate::utils::get_version().to_string(),
+            uptime: crate::utils::format_uptime(uptime),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -24,6 +41,28 @@ pub struct InfoResponse {
     pub allow_system_resources_commands: bool,
     pub allow_systemd_commands: bool,
     pub allow_docker_commands: bool,
+}
+
+impl InfoResponse {
+    pub fn from_pids(pid: Vec<u32>) -> Self {
+        let args = &crate::prelude::get_config().args;
+        Self {
+            auth_enabled: args.enable_auth,
+            blind: args.is_blind(),
+            pid,
+            top_processes: args.top_processes,
+            limit_processes: args.limit_processes,
+            telegram_bot: args.telegram,
+            system_resources: args.system_resources,
+            systemd: args.systemd,
+            docker: args.docker,
+            allow_process_commands: args.allow_process_commands,
+            allow_screen_commands: args.allow_screen_commands,
+            allow_system_resources_commands: args.allow_system_resources_commands,
+            allow_systemd_commands: args.allow_systemd_commands,
+            allow_docker_commands: args.allow_docker_commands,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,6 +89,23 @@ pub struct ScreenshotImage {
     pub width: u32,
     pub height: u32,
     pub timestamp: String,
+}
+
+impl From<crate::screen_capture::Screenshot> for ScreenshotImage {
+    fn from(screenshot: crate::screen_capture::Screenshot) -> Self {
+        Self {
+            data: base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                &screenshot.image,
+            ),
+            mime: "image/png".to_string(),
+            monitor_name: screenshot.monitor_name,
+            monitor_id: screenshot.monitor_id,
+            width: screenshot.width,
+            height: screenshot.height,
+            timestamp: now_rfc3339(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

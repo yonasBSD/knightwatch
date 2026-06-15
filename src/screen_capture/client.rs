@@ -1,6 +1,6 @@
 use tokio::sync::{mpsc, oneshot};
 
-use super::models::{ScreenCaptureCommand, ScreenCaptureQuery, Screenshot};
+use super::enums::{ScreenCaptureCommand, ScreenCaptureQuery};
 use crate::prelude::*;
 
 #[cfg(feature = "screenshot")]
@@ -23,7 +23,7 @@ fn get_screen_capture_command_sender() -> Option<&'static mpsc::Sender<ScreenCap
     None
 }
 
-pub async fn get_screenshots() -> Vec<Screenshot> {
+pub async fn get_screenshots() -> Vec<super::structs::Screenshot> {
     let Some(tx_ref) = get_screen_capture_query_sender() else {
         return Vec::new();
     };

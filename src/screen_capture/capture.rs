@@ -2,7 +2,8 @@ use std::sync::OnceLock;
 use tokio::{sync::mpsc, time::Duration};
 use xcap::Monitor;
 
-use super::models::*;
+use super::enums::*;
+use super::structs::*;
 use crate::prelude::*;
 
 impl ScreenCaptureChannels {
@@ -147,7 +148,7 @@ impl ScreenCapture {
         let height = rgba_img.height();
         let mut buf = std::io::Cursor::new(Vec::new());
         rgba_img
-            .write_to(&mut buf, image::ImageFormat::Png)
+            .write_to(&mut buf, xcap::image::ImageFormat::Png)
             .map_err(|e| Error::Screen(format!("Failed to encode PNG: {e}")))?;
         Ok(Screenshot {
             image: buf.into_inner(),

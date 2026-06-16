@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
-use super::structs::ProcessSnapshot;
+use super::structs::{ProcessSnapshot, ProcessTree};
 use crate::types::Result;
 
 /// Events emitted by the tracker on its broadcast bus.
@@ -60,7 +60,7 @@ pub enum ProcessTrackerQuery {
     /// Returns true when no live descendants remain.
     IsWorkDone {
         root_pid: u32,
-        response: oneshot::Sender<bool>,
+        response: oneshot::Sender<Option<bool>>,
     },
     GetTopProcesses {
         by: SortKey,
@@ -69,6 +69,17 @@ pub enum ProcessTrackerQuery {
     },
     GetTrackedPids {
         response: oneshot::Sender<Vec<u32>>,
+    },
+    GetProcessTree {
+        root_pid: u32,
+        response: oneshot::Sender<Option<ProcessTree>>,
+    },
+    GetAllProcessTrees {
+        response: oneshot::Sender<Vec<ProcessTree>>,
+    },
+    GetProcessStatus {
+        root_pid: u32,
+        response: oneshot::Sender<Option<super::structs::ProcessStatus>>,
     },
 }
 

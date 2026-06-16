@@ -9,10 +9,9 @@ use std::time::Duration;
 use super::{models::*, utils::*};
 use crate::{
     docker_tracker::{self, ContainerSnapshot},
-    process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessStatus, ProcessTree},
+    process_tracker::{self, ProcessSignal, ProcessSnapshot, ProcessTree},
     screen_capture, system_resources,
     systemd::{self, UnitSnapshot},
-    utils::now_rfc3339,
 };
 
 pub async fn shutdown(
@@ -129,22 +128,21 @@ pub async fn root_pids() -> Json<Vec<u32>> {
 /// `GET /process/{pid}`
 ///
 /// Returns the full process tree of a given root pid: root + all live descendants, plus a
-/// `work_done` flag. Useful for dashboards or external orchestration.
-pub async fn process_tree(Path(root_pid): Path<u32>) -> Json<ProcessTree> {
-    let (root, children, work_done) = tokio::join!(
-        process_tracker::get_root(root_pid),
-        process_tracker::get_children(root_pid),
-        process_tracker::is_work_done(root_pid),
-    );
+/// `work_done` flag. Useful for dashboards or external orchestration. Returns 404 if the root process has exited and is no longer tracked.
+pub async fn process_tree(
+    Path(root_pid): Path<u32>,
+) -> Result<Json<ProcessTree>, (StatusCode, String)> {
+    process_tracker::get_process_tree(root_pid)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("Root process is not running".to_string()))
+}
 
-    let child_count = children.len();
-    Json(ProcessTree {
-        root,
-        children,
-        child_count,
-        work_done,
-        timestamp: now_rfc3339(),
-    })
+/// `GET /process/trees`
+///
+/// Returns all process trees currently being tracked.
+pub async fn process_trees() -> Json<Vec<ProcessTree>> {
+    Json(process_tracker::get_all_process_trees().await)
 }
 
 /// `GET /process/root/{pid}`
@@ -169,22 +167,28 @@ pub async fn process_children(Path(root_pid): Path<u32>) -> Json<Vec<ProcessSnap
 /// `GET /process/status/{pid}`
 ///
 /// Lightweight summary — cheap to poll frequently.
-/// Returns root alive/dead, child count, and the `work_done` flag of a given root pid.
-pub async fn process_status(Path(root_pid): Path<u32>) -> Json<ProcessStatus> {
-    let (root_snap, child_count, work_done) = tokio::join!(
-        process_tracker::get_root(root_pid),
-        async { process_tracker::get_children(root_pid).await.len() },
-        process_tracker::is_work_done(root_pid),
-    );
+/// Returns root alive/dead, child count, and the `work_done` flag of a given root pid. 
+/// Returns 404 if the root process has exited and is no longer tracked.
+pub async fn process_status(
+    Path(root_pid): Path<u32>,
+) -> Result<Json<process_tracker::ProcessStatus>, (StatusCode, String)> {
+    process_tracker::get_process_status(root_pid)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("Root process is not running".to_string()))
+}
 
-    Json(ProcessStatus {
-        root_alive: root_snap.is_some(),
-        root_pid: root_snap.as_ref().map(|s| s.pid),
-        root_name: root_snap.map(|s| s.name),
-        child_count,
-        work_done,
-        timestamp: now_rfc3339(),
-    })
+/// `GET /process/is-done/{pid}`
+///
+/// Returns whether the work is done (all children have exited) for a given root pid. 
+/// Returns 404 if the root process has exited and is no longer tracked.
+pub async fn is_process_done(
+    Path(root_pid): Path<u32>,
+) -> Result<Json<bool>, (StatusCode, String)> {
+    process_tracker::is_process_done(root_pid)
+        .await
+        .map(Json)
+        .ok_or_else(|| not_found("Root process is not running".to_string()))
 }
 
 /// `GET /top-processes?limit=10&sort=cpu`

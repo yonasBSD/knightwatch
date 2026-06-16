@@ -17,30 +17,17 @@ pub async fn handle_process(bot: Bot, msg: Message, state: State) -> Result<()> 
     if !state.is_authorized(msg.chat.id) {
         return send_auth_first_message(bot, msg.chat.id).await;
     }
-    let root_pids = process_tracker::get_root_pids().await;
-    if root_pids.is_empty() {
+    let process_trees = process_tracker::get_all_process_trees().await;
+    if process_trees.is_empty() {
         bot.send_message(msg.chat.id, "📊 No tracked processes found.")
             .reply_markup(ReplyMarkup::Keyboard(main_keyboard()))
             .await?;
         return Ok(());
     }
-    for root_pid in root_pids {
-        let (root, children, work_done) = tokio::join!(
-            process_tracker::get_root(root_pid),
-            process_tracker::get_children(root_pid),
-            process_tracker::is_work_done(root_pid),
-        );
-        let child_count = children.len();
-        let process_tree_snapshot = TelegramDisplay(&process_tracker::ProcessTree {
-            root,
-            children,
-            child_count,
-            work_done,
-            timestamp: crate::utils::now_rfc3339(),
-        });
-        bot.send_message(msg.chat.id, process_tree_snapshot.to_string())
+    for process_tree in process_trees {
+        bot.send_message(msg.chat.id, TelegramDisplay(&process_tree).to_string())
             .parse_mode(ParseMode::MarkdownV2)
-            .reply_markup(tracked_process_keyboard(root_pid))
+            .reply_markup(tracked_process_keyboard(process_tree.root_pid))
             .await?;
     }
     Ok(())

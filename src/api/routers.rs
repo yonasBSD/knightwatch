@@ -29,6 +29,8 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
         .route("/process/root/{root_pid}", get(process_root)) // root only
         .route("/process/children/{root_pid}", get(process_children)) // children only
         .route("/process/status/{root_pid}", get(process_status)) // lightweight summary
+        .route("/process/is-done/{root_pid}", get(is_process_done)) // whether work is done (all children exited)
+        .route("/process/trees", get(process_trees)) // all process trees
         .route("/top-processes", get(top_processes)) // top processes
         .route("/supported-signals", get(supported_signals)) // supported signals
         // ── System Resources ──────────────────────────────────────────────

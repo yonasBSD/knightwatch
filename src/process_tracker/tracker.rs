@@ -153,10 +153,18 @@ impl ProcessTracker {
                     self.state
                         .root_processes
                         .get(&root_pid)
-                        .map(|process| process.work_done)
-                        .unwrap_or_default(),
+                        .map(|process| process.work_done),
                 );
             }
+            ProcessTrackerQuery::GetProcessTree { root_pid, response } => {
+                let _ = response.send(self.state.root_processes.get(&root_pid).map(Into::into));
+            }
+            ProcessTrackerQuery::GetAllProcessTrees { response } => {
+                let _ = response.send(self.state.root_processes.values().map(Into::into).collect());
+            }
+            ProcessTrackerQuery::GetProcessStatus { root_pid, response } => {
+                let _ = response.send(self.state.root_processes.get(&root_pid).map(Into::into));
+            },
             ProcessTrackerQuery::GetTrackedPids { response } => {
                 let _ = response.send(self.state.root_processes.keys().cloned().collect());
             }

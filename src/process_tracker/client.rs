@@ -2,7 +2,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{
     enums::{ProcessTrackerCommand, ProcessTrackerQuery},
-    structs::ProcessSnapshot,
+    structs::{ProcessSnapshot, ProcessTree, ProcessStatus},
 };
 use crate::prelude::*;
 
@@ -48,7 +48,7 @@ pub async fn get_root(root_pid: u32) -> Option<ProcessSnapshot> {
             response: tx,
         })
         .await;
-    rx.await.unwrap_or(None)
+    rx.await.unwrap_or_default()
 }
 
 /// Get snapshots of all currently live child processes.
@@ -67,10 +67,8 @@ pub async fn get_children(root_pid: u32) -> Vec<ProcessSnapshot> {
 }
 
 /// Returns true when all children have exited (work is considered done).
-pub async fn is_work_done(root_pid: u32) -> bool {
-    let Some(tx_ref) = get_process_tracker_query_sender() else {
-        return true; // no tracker = no work to wait for
-    };
+pub async fn is_process_done(root_pid: u32) -> Option<bool> {
+    let tx_ref = get_process_tracker_query_sender()?;
     let (tx, rx) = oneshot::channel();
     let _ = tx_ref
         .send(ProcessTrackerQuery::IsWorkDone {
@@ -78,7 +76,45 @@ pub async fn is_work_done(root_pid: u32) -> bool {
             response: tx,
         })
         .await;
-    rx.await.unwrap_or(true)
+    rx.await.unwrap_or_default()
+}
+
+/// Get a process tree by pid.
+pub async fn get_process_tree(root_pid: u32) -> Option<ProcessTree> {
+    let tx_ref = get_process_tracker_query_sender()?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerQuery::GetProcessTree {
+            root_pid,
+            response: tx,
+        })
+        .await;
+    rx.await.unwrap_or_default()
+}
+
+/// Get all process trees currently being tracked.
+pub async fn get_all_process_trees() -> Vec<ProcessTree> {
+    let Some(tx_ref) = get_process_tracker_query_sender() else {
+        return Vec::new();
+    };
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerQuery::GetAllProcessTrees { response: tx })
+        .await;
+    rx.await.unwrap_or_default()
+}
+
+/// Get a process status by pid.
+pub async fn get_process_status(root_pid: u32) -> Option<ProcessStatus> {
+    let tx_ref = get_process_tracker_query_sender()?;
+    let (tx, rx) = oneshot::channel();
+    let _ = tx_ref
+        .send(ProcessTrackerQuery::GetProcessStatus {
+            root_pid,
+            response: tx,
+        })
+        .await;
+    rx.await.unwrap_or_default()
 }
 
 /// Get the top N processes sorted by the given key.

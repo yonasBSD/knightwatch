@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use tokio::sync::{broadcast, mpsc};
 
 use super::enums::*;
+use crate::utils::now_rfc3339;
 
 // Linux-only structures
 #[cfg(target_os = "linux")]
@@ -46,7 +47,6 @@ impl From<procfs::process::Io> for IOStats {
 }
 
 pub struct RootProcess {
-    #[allow(unused)]
     pub root_pid: u32,
     pub first_tick: bool,
     pub root_appeared: bool,
@@ -129,6 +129,7 @@ pub struct ProcessTrackerChannels {
 
 #[derive(Debug, Serialize)]
 pub struct ProcessTree {
+    pub root_pid: u32,
     pub root: Option<ProcessSnapshot>,
     pub children: Vec<ProcessSnapshot>,
     pub child_count: usize,
@@ -136,7 +137,20 @@ pub struct ProcessTree {
     pub timestamp: String,
 }
 
-#[derive(Debug, Serialize)]
+impl From<&RootProcess> for ProcessTree {
+    fn from(root_process: &RootProcess) -> Self {
+        Self {
+            root_pid: root_process.root_pid,
+            root: root_process.last_root.clone(),
+            children: root_process.last_children.clone(),
+            child_count: root_process.last_children.len(),
+            work_done: root_process.work_done,
+            timestamp: now_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Serialize)]
 pub struct ProcessStatus {
     pub root_alive: bool,
     pub root_pid: Option<u32>,
@@ -144,4 +158,17 @@ pub struct ProcessStatus {
     pub child_count: usize,
     pub work_done: bool,
     pub timestamp: String,
+}
+
+impl From<&RootProcess> for ProcessStatus {
+    fn from(root_process: &RootProcess) -> Self {
+        Self {
+            root_alive: root_process.last_root.is_some(),
+            root_pid: root_process.last_root.as_ref().map(|p| p.pid),
+            root_name: root_process.last_root.as_ref().map(|p| p.name.clone()),
+            child_count: root_process.last_children.len(),
+            work_done: root_process.work_done,
+            timestamp: now_rfc3339(),
+        }
+    }
 }

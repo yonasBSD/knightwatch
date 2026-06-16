@@ -49,32 +49,19 @@
   async function refreshTracked() {
     if (pollPaused) return;
     try {
-      const rIds = await apiFetch("/api/root_pids");
-      if (!rIds.ok) throw new Error("HTTP error");
-      const pids = await rIds.json();
+      const r = await apiFetch("/api/process/trees");
+      if (!r.ok) throw new Error("HTTP error");
+      const groups = await r.json();
 
-      if (pids.length === 0) {
+      if (groups.length === 0) {
         workDone = false;
         rootGroups = [];
         return;
       }
 
-      const groups = [];
-      let allDone = true;
-
-      for (const pid of pids) {
-        try {
-          const r = await apiFetch(`/api/process/${pid}`);
-          if (!r.ok) continue;
-          const data = await r.json();
-          allDone = allDone && data.work_done;
-          groups.push({ pid, ...data });
-        } catch {}
-      }
-
-      rootGroups = groups;
-      if (groups.length > 0) hasPids = true;
-      workDone = pids.length > 0 && allDone;
+      rootGroups = groups.map((g) => ({ ...g, pid: g.root_pid }));
+      hasPids = true;
+      workDone = groups.every((g) => g.work_done);
       trackedError = false;
     } catch {
       trackedError = true;

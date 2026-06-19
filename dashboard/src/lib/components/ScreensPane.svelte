@@ -5,8 +5,7 @@
   let {
     active,
     enabled,
-    status = $bindable(),
-    statusError = $bindable(),
+    onstatus,
     allowScreenCommands = false,
     isAuthenticated = false,
   } = $props();
@@ -59,18 +58,14 @@
   }
 
   async function refresh() {
-    const start = Date.now();
     try {
       const r = await apiFetch("/api/screenshot");
       if (!r.ok) throw new Error("HTTP error");
       const data = await r.json();
       screens = data.screens;
-      const elapsed = Date.now() - start;
-      status = `● LIVE · ${data.screens.length} SCREEN${data.screens.length > 1 ? "S" : ""} · ${elapsed}MS`;
-      statusError = false;
+      onstatus(`● LIVE`, false);
     } catch {
-      status = `● OFFLINE · ${new Date().toLocaleTimeString()}`;
-      statusError = true;
+      onstatus(`● OFFLINE · ${new Date().toLocaleTimeString()}`, true);
     }
   }
 

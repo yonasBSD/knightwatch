@@ -4,6 +4,8 @@
 
   let {
     active,
+    enabled,
+    onstatus,
     allowDockerCommands = false,
     isAuthenticated = false,
   } = $props();
@@ -78,8 +80,10 @@
       if (!r.ok) throw new Error("HTTP error");
       containers = (await r.json()) || [];
       listError = false;
+      onstatus("● LIVE", false);
     } catch {
       listError = true;
+      onstatus(`● OFFLINE · ${new Date().toLocaleTimeString()}`, true);
     }
   }
 

@@ -5,6 +5,7 @@
   let {
     active,
     enabled,
+    onstatus,
     allowSystemdCommands = false,
     isAuthenticated = false,
   } = $props();
@@ -37,7 +38,10 @@
       ]);
       if (snapRes.ok) snap = await snapRes.json();
       if (failedRes.ok) failedUnits = await failedRes.json();
-    } catch {}
+      onstatus("● LIVE", false);
+    } catch {
+      onstatus(`● OFFLINE · ${new Date().toLocaleTimeString()}`, true);
+    }
   }
 
   async function openUnit(unitName) {

@@ -6,6 +6,8 @@
   let {
     active,
     hasPids: hasPidsConfig,
+    enabled,
+    onstatus,
     hasTopProcesses,
     limitProcesses,
     allowProcessCommands = false,
@@ -63,8 +65,10 @@
       hasPids = true;
       workDone = groups.every((g) => g.work_done);
       trackedError = false;
+      onstatus("● LIVE", false);
     } catch {
       trackedError = true;
+      onstatus(`● OFFLINE · ${new Date().toLocaleTimeString()}`, true);
     }
   }
 

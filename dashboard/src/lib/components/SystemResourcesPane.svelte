@@ -5,6 +5,7 @@
   let {
     active,
     enabled,
+    onstatus,
     allowSystemResourcesCommands = false,
     isAuthenticated = false,
   } = $props();
@@ -16,7 +17,10 @@
       const r = await apiFetch("/api/system");
       if (!r.ok) throw new Error("HTTP error");
       snap = await r.json();
-    } catch {}
+      onstatus("● LIVE", false);
+    } catch {
+      onstatus(`● OFFLINE · ${new Date().toLocaleTimeString()}`, true);
+    }
   }
 
   // Use $effect so polling starts/stops reactively based on `enabled`

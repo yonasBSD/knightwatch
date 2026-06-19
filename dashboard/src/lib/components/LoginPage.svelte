@@ -47,7 +47,7 @@
 <div class="login-backdrop">
   <div class="login-card">
     <div class="login-brand">
-      <span class="brand-dot"></span>
+      <img src="../../logo.webp" alt="Knight Watch logo" class="brand-logo" />
       <h1>Knight Watch</h1>
     </div>
     <p class="login-sub">Sign in to continue</p>
@@ -131,16 +131,15 @@
 
   .login-brand {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.75rem;
   }
-  .brand-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 12px var(--accent);
-    flex-shrink: 0;
+  .brand-logo {
+    width: 72px;
+    height: auto;
+    object-fit: contain;
+    border-radius: 0.5rem;
   }
   .login-brand h1 {
     font-size: 1rem;

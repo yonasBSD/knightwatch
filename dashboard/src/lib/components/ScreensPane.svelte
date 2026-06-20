@@ -1,5 +1,6 @@
 <script>
   import { fmtTimestamp } from "../utils/format.js";
+  import SignInNotice from "./SignInNotice.svelte";
   import { apiFetch } from "../api.js";
 
   let {
@@ -88,9 +89,7 @@
     </div>
     {#if allowScreenCommands}
       {#if !isAuthenticated}
-        <div class="cmd-auth-notice">
-          <span aria-hidden="true">🔒</span> Sign in to use screen commands
-        </div>
+          <SignInNotice name="screen" />
       {:else}
         <div class="poll-controls">
           <button
@@ -203,17 +202,6 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-  }
-  .cmd-auth-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 0.25rem 0.7rem;
   }
   .poll-controls {
     display: flex;

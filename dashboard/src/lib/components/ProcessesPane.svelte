@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import ProcessCard from "./ProcessCard.svelte";
+  import SignInNotice from "./SignInNotice.svelte";
   import { apiFetch } from "../api.js";
 
   let {
@@ -184,9 +185,7 @@
     </div>
     {#if allowProcessCommands}
       {#if !isAuthenticated}
-        <div class="cmd-auth-notice">
-          <span aria-hidden="true">🔒</span> Sign in to use process commands
-        </div>
+          <SignInNotice name="process" />
       {:else}
         <div class="poll-controls">
           <button
@@ -468,17 +467,6 @@
   }
   .children-group > summary::-webkit-details-marker {
     display: none;
-  }
-  .cmd-auth-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 0.25rem 0.7rem;
   }
   .poll-controls {
     display: flex;

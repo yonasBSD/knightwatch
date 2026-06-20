@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { apiFetch } from "../api.js";
+  import SignInNotice from "./SignInNotice.svelte";
 
   let {
     active,
@@ -175,9 +176,7 @@
     <div class="header-right">
       {#if allowDockerCommands}
         {#if !isAuthenticated}
-          <div class="cmd-auth-notice">
-            <span aria-hidden="true">🔒</span> Sign in to use docker commands
-          </div>
+          <SignInNotice name="docker" />
         {:else}
           <div class="poll-controls">
             <button
@@ -677,17 +676,6 @@
     font-size: 0.68rem;
     color: #f87171;
     font-family: ui-monospace, monospace;
-  }
-  .cmd-auth-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    background: var(--bg-card);
-    border: 1px solid var(--border-soft);
-    border-radius: 6px;
-    padding: 0.25rem 0.7rem;
   }
   .muted {
     color: var(--text-muted);

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sysinfo::ProcessStatus;
 use tokio::sync::oneshot;
 
@@ -42,6 +43,42 @@ pub enum ProcessTrackerEvent {
         /// or if the process was not found.
         success: bool,
     },
+}
+
+impl From<&ProcessTrackerEvent> for crate::events::EventPayload {
+    fn from(event: &ProcessTrackerEvent) -> Self {
+        let (event_name, data) = match event {
+            ProcessTrackerEvent::RootExited { pid } => {
+                ("process.root_exited", json!({ "pid": pid }))
+            }
+            ProcessTrackerEvent::ChildrenExited { pid, children } => (
+                "process.children_exited",
+                json!({ "pid": pid, "children": children }),
+            ),
+            ProcessTrackerEvent::ChildrenAppeared { pid, children } => (
+                "process.children_appeared",
+                json!({ "pid": pid, "children": children }),
+            ),
+            ProcessTrackerEvent::AllChildrenGone { pid } => {
+                ("process.all_children_gone", json!({ "pid": pid }))
+            }
+            ProcessTrackerEvent::InitialSnapshot { root, children } => (
+                "process.initial_snapshot",
+                json!({
+                    "root_pid": if let Some(root) = root { root.pid } else { 0 },
+                    "child_count": children.len()
+                }),
+            ),
+            ProcessTrackerEvent::WorkComplete { pid } => {
+                ("process.work_complete", json!({ "pid": pid }))
+            }
+            ProcessTrackerEvent::ProcessKilled { pid, success } => (
+                "process.process_killed",
+                json!({ "pid": pid, "success": success }),
+            ),
+        };
+        Self::new(event_name, data)
+    }
 }
 
 /// One-shot queries callers can send to read tracker state synchronously.

@@ -1,8 +1,7 @@
 use reqwest::Client;
 use tokio_util::sync::CancellationToken;
 
-use super::models::WebhookPayload;
-use crate::{prelude::*, utils::recv_or_pending};
+use crate::{prelude::*, utils::recv_or_pending, events::EventPayload};
 
 pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) {
     let mut process_tracker_rx = crate::process_tracker::subscribe_events();
@@ -26,16 +25,16 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
                 return;
             }
             e = recv_or_pending(&mut process_tracker_rx, "webhook: process tracker") => {
-                WebhookPayload::from(&e)
+                EventPayload::from(&e)
             }
             e = recv_or_pending(&mut system_resources_rx, "webhook: system resources") => {
-                WebhookPayload::from(&e)
+                EventPayload::from(&e)
             }
             e = recv_or_pending(&mut systemd_rx, "webhook: systemd") => {
-                WebhookPayload::from(&e)
+                EventPayload::from(&e)
             }
             e = recv_or_pending(&mut docker_tracker_rx, "webhook: docker tracker") => {
-                WebhookPayload::from(&e)
+                EventPayload::from(&e)
             }
         };
         for url in &urls {
@@ -47,7 +46,7 @@ pub async fn run_dispatcher(urls: Vec<String>, cancel_token: CancellationToken) 
 async fn fire_with_retry(
     client: &Client,
     url: &str,
-    payload: &WebhookPayload,
+    payload: &EventPayload,
     cancel_token: &CancellationToken,
 ) {
     let mut attempts = 0u32;

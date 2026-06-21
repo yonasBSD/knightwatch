@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::json;
 use tokio::sync::oneshot;
 
 use super::structs::*;
@@ -30,6 +31,53 @@ pub enum SystemResourcesEvent {
 
     /// Battery state changed (e.g. plugged in / unplugged).
     BatteryStateChanged { state: BatteryState },
+}
+
+impl From<&SystemResourcesEvent> for crate::events::EventPayload {
+    fn from(event: &SystemResourcesEvent) -> Self {
+        let (event_name, data) = match event {
+            SystemResourcesEvent::InitialSnapshot { snapshot } => (
+                "resources.initial_snapshot",
+                json!({ "snapshot": snapshot }),
+            ),
+            SystemResourcesEvent::Tick { snapshot } => {
+                ("resources.tick", json!({ "snapshot": snapshot }))
+            }
+            SystemResourcesEvent::CpuThresholdExceeded {
+                usage_percent,
+                threshold,
+            } => (
+                "resources.cpu_threshold_exceeded",
+                json!({ "usage_percent": usage_percent, "threshold": threshold }),
+            ),
+            SystemResourcesEvent::MemoryThresholdExceeded {
+                used_percent,
+                threshold,
+            } => (
+                "resources.memory_threshold_exceeded",
+                json!({ "usage_percent": used_percent, "threshold": threshold }),
+            ),
+            SystemResourcesEvent::DiskThresholdExceeded {
+                mount_point,
+                used_percent,
+                threshold,
+            } => (
+                "resources.disk_threshold_exceeded",
+                json!({ "mount_point": mount_point, "usage_percent": used_percent, "threshold": threshold }),
+            ),
+            SystemResourcesEvent::BatteryLow {
+                charge_percent,
+                threshold,
+            } => (
+                "resources.battery_low",
+                json!({ "charge_percent": charge_percent, "threshold": threshold }),
+            ),
+            SystemResourcesEvent::BatteryStateChanged { state } => {
+                ("resources.battery_state_changed", json!({ "state": state }))
+            }
+        };
+        Self::new(event_name, data)
+    }
 }
 
 #[derive(Debug)]

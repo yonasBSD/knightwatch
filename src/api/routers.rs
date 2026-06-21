@@ -52,6 +52,8 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
         .route("/docker-containers", get(list_docker_containers)) // docker containers
         .route("/container/{id_or_name}", get(get_docker_container)) // container by name or id
         .route("/top-containers", get(top_docker_containers)) // top containers
+        // ── SSE ───────────────────────────────────────────────────────
+        .route("/sse", get(crate::sse::sse_stream))
         .with_state(cancel_token);
     if auth_layer {
         api.layer(middleware::from_fn(auth_middleware))

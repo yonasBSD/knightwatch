@@ -1981,6 +1981,7 @@ dependencies = [
  "chrono",
  "clap",
  "directories",
+ "futures",
  "futures-util",
  "mime_guess",
  "native-tls",
@@ -1996,6 +1997,7 @@ dependencies = [
  "sysinfo",
  "teloxide",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
@@ -4192,6 +4194,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
 use bollard::config::ContainerSummaryStateEnum;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::sync::oneshot;
 
 use super::structs::ContainerSnapshot;
@@ -45,6 +46,82 @@ pub enum DockerTrackerEvent {
         action: ContainerAction,
         success: bool,
     },
+}
+
+impl From<&DockerTrackerEvent> for crate::events::EventPayload {
+    fn from(event: &DockerTrackerEvent) -> Self {
+        let (event_name, data) = match event {
+            DockerTrackerEvent::InitialSnapshot { containers } => (
+                "docker.initial_snapshot",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainersAppeared { containers } => (
+                "docker.containers_appeared",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainersDisappeared { containers } => (
+                "docker.containers_disappeared",
+                json!({
+                    "container_count": containers.len(),
+                    "containers": containers,
+                }),
+            ),
+            DockerTrackerEvent::ContainerStatusChanged {
+                container,
+                previous,
+            } => (
+                "docker.container_status_changed",
+                json!({
+                    "id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "status": container.status,
+                    "previous_status": previous,
+                }),
+            ),
+            DockerTrackerEvent::ContainerHealthChanged {
+                container,
+                previous,
+            } => (
+                "docker.container_health_changed",
+                json!({
+                    "id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "health": container.health,
+                    "previous_health": previous,
+                }),
+            ),
+            DockerTrackerEvent::ContainerOomKilled { id, name } => (
+                "docker.container_oom_killed",
+                json!({
+                    "id": id,
+                    "name": name,
+                }),
+            ),
+            DockerTrackerEvent::ContainerActionResult {
+                id,
+                name,
+                action,
+                success,
+            } => (
+                "docker.container_action_result",
+                json!({
+                    "id": id,
+                    "name": name,
+                    "action": action,
+                    "success": success,
+                }),
+            ),
+        };
+        Self::new(event_name, data)
+    }
 }
 
 // ============================================================================

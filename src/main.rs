@@ -2,10 +2,12 @@ mod api;
 mod config;
 mod docker_tracker;
 mod errors;
+mod events;
 mod macros;
 mod prelude;
 mod process_tracker;
 mod screen_capture;
+mod sse;
 mod system_resources;
 mod systemd;
 mod telegram_bot;
@@ -31,6 +33,7 @@ async fn main() -> Result<(), errors::Error> {
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let vite = api::init_api_server(cancel_token.clone())?;
     webhook::init_webhook_dispatcher(cancel_token.clone());
+    sse::init_sse_dispatcher(cancel_token.clone());
     let telegram_bot = telegram_bot::init_bot(cancel_token.clone());
     tokio::select! {
         _ = cancel_token.cancelled() => {}

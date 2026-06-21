@@ -12,12 +12,12 @@ Knightwatch provides a sleek dark-mode web interface that streams system perform
 
 ## Features
 
+- **REST API** — Axum-powered HTTP API for querying state and sending commands programmatically
+- **Server-Sent Events (SSE)** — Real-time event stream available at `/sse` via the Axum API server
 - **Live Screenshots** — Displays one or more connected screens, refreshed every 2 seconds
 - **Screen Commands** — control polling via API or Telegram (requires `--allow-screen-commands`)
 - **Process Monitor** — Tracks a root process and its children with real-time CPU, memory, and state indicators
 - **Process Commands** — Kill, track, untrack processes and control polling via API or Telegram (requires `--allow-process-commands`)
-- **Work-Done Detection** — Automatically shows a completion banner when all child processes have exited
-- **Responsive Layout** — Side-by-side panels on desktop, stacked on mobile
 - **Linux Extended Telemetry** — Child process snapshots include working directory, command line, open file descriptors, and I/O stats
 - **System Resources Monitor** — Real-time hardware telemetry: CPU, memory, disks, network, battery, thermals, and aggregate health scoring
 - **System Resources Commands** — Set tresholds, refresh masks and control polling via API or Telegram (requires `--allow-system-resources-commands`)

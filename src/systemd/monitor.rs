@@ -8,43 +8,8 @@ use tokio::{
 };
 use zbus::{Connection, zvariant::OwnedObjectPath};
 
-use super::{enums::*, proxies::*, structs::*, types::*, utils::*};
+use super::{event::*, proxies::*, commands::*, systemd_snap::*, types::*, utils::*};
 use crate::prelude::*;
-
-pub struct SystemdMonitorChannels {
-    pub query_tx: mpsc::Sender<SystemdQuery>,
-    pub query_rx: Option<mpsc::Receiver<SystemdQuery>>,
-    pub command_tx: mpsc::Sender<SystemdCommand>,
-    pub command_rx: Option<mpsc::Receiver<SystemdCommand>>,
-    pub event_tx: broadcast::Sender<SystemdEvent>,
-}
-
-impl SystemdMonitorChannels {
-    pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
-        let (command_tx, command_rx) = mpsc::channel(256);
-        let (event_tx, _) = broadcast::channel(64);
-        Self {
-            query_tx,
-            query_rx: Some(query_rx),
-            command_tx,
-            command_rx: Some(command_rx),
-            event_tx,
-        }
-    }
-
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<SystemdQuery>> {
-        self.query_rx
-            .take()
-            .ok_or_else(|| Error::Systemd("Query receiver already taken".into()))
-    }
-
-    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<SystemdCommand>> {
-        self.command_rx
-            .take()
-            .ok_or_else(|| Error::ProcessTracker("Command receiver already taken".into()))
-    }
-}
 
 struct SystemdMonitorState {
     last_snapshot: Option<SystemdSnapshot>,

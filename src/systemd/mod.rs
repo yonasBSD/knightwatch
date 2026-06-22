@@ -1,9 +1,9 @@
 use crate::prelude::*;
 
 mod client;
-mod enums;
-mod models;
-mod structs;
+mod event;
+mod commands;
+mod systemd_snap;
 
 #[cfg(target_os = "linux")]
 mod monitor;
@@ -58,4 +58,5 @@ pub fn init_systemd_monitor() {
 }
 
 pub use client::*;
-pub use models::*;
+pub use event::SystemdEvent;
+pub use systemd_snap::{SystemdSnapshot, UnitActiveState, UnitSnapshot};

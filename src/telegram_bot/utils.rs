@@ -1,4 +1,4 @@
-use super::models::TelegramDisplay;
+use super::display::TelegramDisplay;
 use crate::{
     docker_tracker::{ContainerHealth, ContainerStatus, DockerTrackerEvent},
     process_tracker::ProcessTrackerEvent,

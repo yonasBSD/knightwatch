@@ -4,8 +4,9 @@ use teloxide::{
 };
 
 use super::super::{
+    display::TelegramDisplay,
     keyboards::{cancel_keyboard, systemd_keyboard},
-    models::{ChatState, State, TelegramDisplay},
+    models::{ChatState, State},
     utils::escape_mdv2,
 };
 use crate::{prelude::*, systemd};

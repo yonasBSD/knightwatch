@@ -3,12 +3,12 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{
-    enums::{SystemResourcesCommand, SystemResourcesQuery},
-    structs::*,
+    commands::{SystemResourcesCommand, SystemResourcesQuery},
+    system::*,
 };
 use crate::prelude::*;
 
-pub fn subscribe_events() -> Option<broadcast::Receiver<super::enums::SystemResourcesEvent>> {
+pub fn subscribe_events() -> Option<broadcast::Receiver<super::event::SystemResourcesEvent>> {
     super::resources::SYSTEM_RESOURCES_EVENT_SENDER
         .get()
         .map(|tx| tx.subscribe())

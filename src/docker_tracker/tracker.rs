@@ -1,5 +1,5 @@
 use bollard::Docker;
-use futures_util::StreamExt;
+use futures::StreamExt;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
@@ -9,42 +9,11 @@ use tokio::{
     time::Duration,
 };
 
-use super::{enums::*, structs::*};
+use super::{commands::*, container::*, event::*};
 use crate::prelude::*;
 
-// ============================================================================
-// Tracker
-// ============================================================================
-
-impl DockerTrackerChannels {
-    pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
-        let (command_tx, command_rx) = mpsc::channel(256);
-        let (event_tx, _) = broadcast::channel(64);
-        Self {
-            query_tx,
-            query_rx: Some(query_rx),
-            command_tx,
-            command_rx: Some(command_rx),
-            event_tx,
-        }
-    }
-
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<DockerTrackerQuery>> {
-        self.query_rx
-            .take()
-            .ok_or_else(|| Error::DockerTracker("Query receiver already taken".into()))
-    }
-
-    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<DockerTrackerCommand>> {
-        self.command_rx
-            .take()
-            .ok_or_else(|| Error::DockerTracker("Command receiver already taken".into()))
-    }
-}
-
 /// State held by the tracker between ticks.
-pub struct DockerTrackerState {
+struct DockerTrackerState {
     /// All containers seen on the last tick, keyed by full ID.
     containers: HashMap<String, ContainerSnapshot>,
     /// IDs seen on the previous tick — used for appeared/disappeared diffing.
@@ -184,7 +153,7 @@ impl DockerTracker {
             .map(|s| s.id.clone())
             .collect();
 
-        let stats_results = futures_util::future::join_all(running_ids.iter().map(|id| {
+        let stats_results = futures::future::join_all(running_ids.iter().map(|id| {
             let docker = self.docker.clone();
             let id = id.clone();
             async move {

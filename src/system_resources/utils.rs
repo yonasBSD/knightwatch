@@ -1,6 +1,6 @@
 use sysinfo::System;
 
-use super::{enums::*, structs::*};
+use super::system::*;
 
 pub fn derive_health(
     cpu: &CpuSnapshot,

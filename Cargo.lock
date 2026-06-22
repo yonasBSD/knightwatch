@@ -1982,7 +1982,6 @@ dependencies = [
  "clap",
  "directories",
  "futures",
- "futures-util",
  "mime_guess",
  "native-tls",
  "nvml-wrapper",

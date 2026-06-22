@@ -6,43 +6,8 @@ use tokio::{
     time::Duration,
 };
 
-use super::{enums::*, structs::*, utils::*};
+use super::{commands::*, event::*, system::*};
 use crate::prelude::*;
-
-pub struct SystemResourcesChannels {
-    pub query_tx: mpsc::Sender<SystemResourcesQuery>,
-    pub query_rx: Option<mpsc::Receiver<SystemResourcesQuery>>,
-    pub command_tx: mpsc::Sender<SystemResourcesCommand>,
-    pub command_rx: Option<mpsc::Receiver<SystemResourcesCommand>>,
-    pub event_tx: broadcast::Sender<SystemResourcesEvent>,
-}
-
-impl SystemResourcesChannels {
-    pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
-        let (command_tx, command_rx) = mpsc::channel(256);
-        let (event_tx, _) = broadcast::channel(64);
-        Self {
-            query_tx,
-            query_rx: Some(query_rx),
-            command_tx,
-            command_rx: Some(command_rx),
-            event_tx,
-        }
-    }
-
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<SystemResourcesQuery>> {
-        self.query_rx
-            .take()
-            .ok_or_else(|| Error::SystemResources("Query receiver already taken".into()))
-    }
-
-    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<SystemResourcesCommand>> {
-        self.command_rx
-            .take()
-            .ok_or_else(|| Error::SystemResources("Command receiver already taken".into()))
-    }
-}
 
 struct SystemResourcesState {
     last_snapshot: Option<SystemSnapshot>,
@@ -340,7 +305,7 @@ impl SystemResources {
         let memory = self.build_memory_snapshot();
         let disks = self.build_disk_snapshots();
         let battery = self.build_battery_snapshot();
-        let health = derive_health(&cpu, &memory, &disks, &battery);
+        let health = super::utils::derive_health(&cpu, &memory, &disks, &battery);
         SystemSnapshot {
             timestamp: crate::utils::now_rfc3339(),
             cpu,

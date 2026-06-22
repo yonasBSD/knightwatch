@@ -2,34 +2,8 @@ use std::sync::OnceLock;
 use tokio::{sync::mpsc, time::Duration};
 use xcap::Monitor;
 
-use super::enums::*;
-use super::structs::*;
+use super::{commands::*, screenshot::*};
 use crate::prelude::*;
-
-impl ScreenCaptureChannels {
-    pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
-        let (command_tx, command_rx) = mpsc::channel(256);
-        Self {
-            query_tx,
-            query_rx: Some(query_rx),
-            command_tx,
-            command_rx: Some(command_rx),
-        }
-    }
-
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<ScreenCaptureQuery>> {
-        self.query_rx
-            .take()
-            .ok_or_else(|| Error::Screen("Query receiver already taken".into()))
-    }
-
-    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<ScreenCaptureCommand>> {
-        self.command_rx
-            .take()
-            .ok_or_else(|| Error::Screen("Command receiver already taken".into()))
-    }
-}
 
 struct ScreenCapture {
     last_captures: Vec<Screenshot>,

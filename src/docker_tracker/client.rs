@@ -1,14 +1,14 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{
-    enums::{DockerTrackerCommand, DockerTrackerQuery},
-    structs::ContainerSnapshot,
+    commands::{DockerTrackerCommand, DockerTrackerQuery},
+    container::ContainerSnapshot,
 };
 use crate::prelude::*;
 
 /// Subscribe to tracker events (e.g. from a Telegram bot or WebSocket handler).
 /// Returns `None` if the tracker was not started.
-pub fn subscribe_events() -> Option<broadcast::Receiver<super::enums::DockerTrackerEvent>> {
+pub fn subscribe_events() -> Option<broadcast::Receiver<super::event::DockerTrackerEvent>> {
     super::tracker::DOCKER_TRACKER_EVENT_SENDER
         .get()
         .map(|tx| tx.subscribe())
@@ -48,7 +48,7 @@ pub async fn get_container(id_or_name: String) -> Option<ContainerSnapshot> {
 
 /// Query the tracker for the top N containers sorted by a specific key. Returns an empty list if the tracker is not running.
 pub async fn get_top_containers(
-    by: super::enums::DockerSortKey,
+    by: super::container::DockerSortKey,
     limit: usize,
 ) -> Vec<ContainerSnapshot> {
     let Some(tx_ref) = get_docker_tracker_query_sender() else {

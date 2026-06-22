@@ -4,10 +4,11 @@ use teloxide::{
 };
 
 use super::super::{
+    display::TelegramDisplay,
     keyboards::{
         main_keyboard, top_process_keyboard, top_processes_keyboard, tracked_process_keyboard,
     },
-    models::{ProcessCallbackAction, State, TelegramDisplay},
+    models::{ProcessCallbackAction, State},
     utils::escape_mdv2,
 };
 use super::auth::send_auth_first_message;

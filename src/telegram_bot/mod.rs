@@ -1,8 +1,9 @@
 mod bot;
+mod broadcast;
+mod display;
+mod handlers;
+mod keyboards;
 mod models;
 mod utils;
-mod broadcast;
-mod keyboards;
-mod handlers;
 
 pub use bot::init_bot;

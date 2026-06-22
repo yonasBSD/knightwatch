@@ -8,36 +8,8 @@ use tokio::{
     time::Duration,
 };
 
-use super::{enums::*, structs::*};
+use super::{commands::*, event::*, process::*};
 use crate::prelude::*;
-
-impl ProcessTrackerChannels {
-    pub fn new() -> Self {
-        let (query_tx, query_rx) = mpsc::channel(1024);
-        let (command_tx, command_rx) = mpsc::channel(256);
-        // capacity 64: events are cheap and subscribers should keep up
-        let (event_tx, _) = broadcast::channel(64);
-        Self {
-            query_tx,
-            query_rx: Some(query_rx),
-            command_tx,
-            command_rx: Some(command_rx),
-            event_tx,
-        }
-    }
-
-    pub fn take_query_rx(&mut self) -> Result<mpsc::Receiver<ProcessTrackerQuery>> {
-        self.query_rx
-            .take()
-            .ok_or_else(|| Error::ProcessTracker("Query receiver already taken".into()))
-    }
-
-    pub fn take_command_rx(&mut self) -> Result<mpsc::Receiver<ProcessTrackerCommand>> {
-        self.command_rx
-            .take()
-            .ok_or_else(|| Error::ProcessTracker("Command receiver already taken".into()))
-    }
-}
 
 struct ProcessTrackerState {
     root_processes: HashMap<u32, RootProcess>,
@@ -164,7 +136,7 @@ impl ProcessTracker {
             }
             ProcessTrackerQuery::GetProcessStatus { root_pid, response } => {
                 let _ = response.send(self.state.root_processes.get(&root_pid).map(Into::into));
-            },
+            }
             ProcessTrackerQuery::GetTrackedPids { response } => {
                 let _ = response.send(self.state.root_processes.keys().cloned().collect());
             }

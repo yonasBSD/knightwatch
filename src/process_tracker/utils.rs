@@ -3,7 +3,7 @@ use procfs::process::Process;
 
 // Linux-only helper functions
 #[cfg(target_os = "linux")]
-pub fn collect_file_descriptors(pid: u32) -> Vec<super::structs::FileDescriptorInfo> {
+pub fn collect_file_descriptors(pid: u32) -> Vec<super::process::FileDescriptorInfo> {
     if let Ok(process) = Process::new(pid as i32)
         && let Ok(fd_iter) = process.fd()
     {
@@ -14,7 +14,7 @@ pub fn collect_file_descriptors(pid: u32) -> Vec<super::structs::FileDescriptorI
 }
 
 #[cfg(target_os = "linux")]
-pub fn collect_io_stats(pid: u32) -> Option<super::structs::IOStats> {
+pub fn collect_io_stats(pid: u32) -> Option<super::process::IOStats> {
     Process::new(pid as i32)
         .ok()
         .and_then(|p| p.io().ok())

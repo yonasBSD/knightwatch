@@ -28,7 +28,6 @@ chrono = { version = "0.4.43", features = ["serde"] }
 clap = { version = "4.5.59", features = ["derive"] }
 directories = "6.0.0"
 futures = "0.3.32"
-futures-util = "0.3.32"
 mime_guess = "2.0.5"
 native-tls = { version = "0.2.18", features = ["vendored"] }
 nvml-wrapper = "0.12.1"

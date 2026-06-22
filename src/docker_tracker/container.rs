@@ -1,7 +1,5 @@
-use serde::Serialize;
-use tokio::sync::mpsc;
-
-use super::enums::*;
+use bollard::config::ContainerSummaryStateEnum;
+use serde::{Deserialize, Serialize};
 
 /// Per-container resource stats captured each poll tick.
 #[derive(Debug, Clone, Serialize)]
@@ -141,11 +139,137 @@ impl ContainerSnapshot {
     }
 }
 
-/// Channel bundle — mirrors `ProcessTrackerChannels`.
-pub struct DockerTrackerChannels {
-    pub query_tx: mpsc::Sender<DockerTrackerQuery>,
-    pub query_rx: Option<mpsc::Receiver<DockerTrackerQuery>>,
-    pub command_tx: mpsc::Sender<DockerTrackerCommand>,
-    pub command_rx: Option<mpsc::Receiver<DockerTrackerCommand>>,
-    pub event_tx: tokio::sync::broadcast::Sender<DockerTrackerEvent>,
+// ============================================================================
+// Container status & health
+// ============================================================================
+
+/// Docker container lifecycle state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerStatus {
+    Created,
+    Running,
+    Paused,
+    Restarting,
+    Removing,
+    Exited,
+    Dead,
+    Stopping,
+    Unknown(String),
+}
+
+impl ContainerStatus {
+    pub fn from_state_enum(state: Option<&ContainerSummaryStateEnum>) -> Self {
+        match state {
+            Some(ContainerSummaryStateEnum::CREATED) => Self::Created,
+            Some(ContainerSummaryStateEnum::RUNNING) => Self::Running,
+            Some(ContainerSummaryStateEnum::PAUSED) => Self::Paused,
+            Some(ContainerSummaryStateEnum::RESTARTING) => Self::Restarting,
+            Some(ContainerSummaryStateEnum::REMOVING) => Self::Removing,
+            Some(ContainerSummaryStateEnum::EXITED) => Self::Exited,
+            Some(ContainerSummaryStateEnum::DEAD) => Self::Dead,
+            Some(ContainerSummaryStateEnum::STOPPING) => Self::Stopping,
+            Some(ContainerSummaryStateEnum::EMPTY) | None => Self::Unknown("empty".to_owned()),
+        }
+    }
+}
+
+impl std::fmt::Display for ContainerStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Created => write!(f, "created"),
+            Self::Running => write!(f, "running"),
+            Self::Paused => write!(f, "paused"),
+            Self::Restarting => write!(f, "restarting"),
+            Self::Removing => write!(f, "removing"),
+            Self::Exited => write!(f, "exited"),
+            Self::Dead => write!(f, "dead"),
+            Self::Stopping => write!(f, "stopping"),
+            Self::Unknown(s) => write!(f, "unknown({s})"),
+        }
+    }
+}
+
+/// Docker health-check result for a container.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerHealth {
+    /// No HEALTHCHECK defined in the image.
+    None,
+    /// Health check is still running for the first time.
+    Starting,
+    Healthy,
+    Unhealthy,
+    Unknown,
+}
+
+impl ContainerHealth {
+    /// Parse from the `Status` string in `ContainerSummary.status`, which looks
+    /// like `"Up 3 hours (healthy)"` or `"Up 5 minutes (unhealthy)"`.
+    pub fn from_status_str(status: &str) -> Self {
+        let lower = status.to_lowercase();
+        if lower.contains("(healthy)") {
+            Self::Healthy
+        } else if lower.contains("(unhealthy)") {
+            Self::Unhealthy
+        } else if lower.contains("(health: starting)") {
+            Self::Starting
+        } else {
+            Self::None
+        }
+    }
+}
+
+impl std::fmt::Display for ContainerHealth {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Starting => write!(f, "starting"),
+            Self::Healthy => write!(f, "healthy"),
+            Self::Unhealthy => write!(f, "unhealthy"),
+            Self::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+/// The action carried out by a command — included in `ContainerActionResult`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerAction {
+    Stop,
+    Kill,
+    Start,
+    Restart,
+    Pause,
+    Unpause,
+}
+
+impl std::fmt::Display for ContainerAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Stop => write!(f, "stop"),
+            Self::Kill => write!(f, "kill"),
+            Self::Start => write!(f, "start"),
+            Self::Restart => write!(f, "restart"),
+            Self::Pause => write!(f, "pause"),
+            Self::Unpause => write!(f, "unpause"),
+        }
+    }
+}
+
+/// Sort key for `GetTopContainers` — subset of `SortKey` relevant to containers.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DockerSortKey {
+    Cpu,
+    Memory,
+}
+
+impl std::fmt::Display for DockerSortKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Cpu => write!(f, "cpu"),
+            Self::Memory => write!(f, "memory"),
+        }
+    }
 }

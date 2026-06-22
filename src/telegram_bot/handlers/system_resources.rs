@@ -1,12 +1,13 @@
 use teloxide::{prelude::*, types::ParseMode};
 
-use crate::{prelude::*, system_resources};
 use super::super::{
+    display::TelegramDisplay,
     keyboards::system_resources_keyboard,
-    models::{State, SystemResourcesCallbackAction, TelegramDisplay},
+    models::{State, SystemResourcesCallbackAction},
     utils::escape_mdv2,
 };
 use super::auth::send_auth_first_message;
+use crate::{prelude::*, system_resources};
 
 pub async fn handle_system_resources(bot: Bot, msg: Message, state: State) -> Result<()> {
     if !state.is_authorized(msg.chat.id) {

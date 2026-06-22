@@ -1,14 +1,14 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{
-    enums::{ProcessTrackerCommand, ProcessTrackerQuery},
-    structs::{ProcessSnapshot, ProcessTree, ProcessStatus},
+    commands::{ProcessTrackerCommand, ProcessTrackerQuery},
+    process::{ProcessSnapshot, ProcessStatus, ProcessTree},
 };
 use crate::prelude::*;
 
 /// Subscribe to tracker events (e.g. from a Telegram bot or WebSocket handler).
 /// Returns `None` if the tracker was not started (no `--pid` given).
-pub fn subscribe_events() -> Option<broadcast::Receiver<super::enums::ProcessTrackerEvent>> {
+pub fn subscribe_events() -> Option<broadcast::Receiver<super::event::ProcessTrackerEvent>> {
     super::tracker::PROCESS_TRACKER_EVENT_SENDER
         .get()
         .map(|tx| tx.subscribe())
@@ -119,7 +119,7 @@ pub async fn get_process_status(root_pid: u32) -> Option<ProcessStatus> {
 
 /// Get the top N processes sorted by the given key.
 /// Returns an empty vec if the tracker was not started.
-pub async fn get_top_processes(by: super::enums::SortKey, limit: usize) -> Vec<ProcessSnapshot> {
+pub async fn get_top_processes(by: super::process::SortKey, limit: usize) -> Vec<ProcessSnapshot> {
     let Some(tx_ref) = get_process_tracker_query_sender() else {
         return Vec::new();
     };
@@ -142,7 +142,7 @@ pub async fn get_top_processes(by: super::enums::SortKey, limit: usize) -> Vec<P
 ///
 /// Returns `Ok(true)` on success, `Ok(false)` if the OS rejected the signal,
 /// or `Err` if the PID was not found in the process list.
-pub async fn kill_process(pid: u32, signal: super::ProcessSignal) -> Result<bool> {
+pub async fn kill_process(pid: u32, signal: super::process::ProcessSignal) -> Result<bool> {
     let tx_ref =
         get_process_tracker_command_sender().ok_or_else(Error::process_commands_disabled)?;
     let (tx, rx) = oneshot::channel();

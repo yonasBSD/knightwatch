@@ -1,8 +1,9 @@
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use super::{
-    enums::{SystemdCommand, SystemdEvent, SystemdQuery},
-    structs::*,
+    commands::{SystemdCommand, SystemdQuery},
+    event::SystemdEvent,
+    systemd_snap::*,
 };
 use crate::prelude::*;
 
@@ -57,7 +58,7 @@ pub async fn get_unit(unit_name: String) -> Option<UnitSnapshot> {
     rx.await.unwrap_or(None)
 }
 
-pub async fn get_units_by_active_state(state: super::enums::UnitActiveState) -> Vec<UnitSnapshot> {
+pub async fn get_units_by_active_state(state: UnitActiveState) -> Vec<UnitSnapshot> {
     let Some(tx_ref) = get_systemd_query_sender() else {
         return Vec::new();
     };
@@ -78,7 +79,7 @@ pub async fn get_failed_units() -> Vec<UnitSnapshot> {
     let (tx, rx) = oneshot::channel();
     let _ = tx_ref
         .send(SystemdQuery::ByActiveState {
-            state: super::enums::UnitActiveState::Failed,
+            state: UnitActiveState::Failed,
             response: tx,
         })
         .await;

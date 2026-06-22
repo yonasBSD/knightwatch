@@ -4,8 +4,9 @@ use teloxide::{
 };
 
 use super::super::{
+    display::TelegramDisplay,
     keyboards::{docker_container_keyboard, docker_keyboard},
-    models::{DockerCallbackAction, State, TelegramDisplay},
+    models::{DockerCallbackAction, State},
     utils::escape_mdv2,
 };
 use super::auth::send_auth_first_message;

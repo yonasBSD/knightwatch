@@ -117,25 +117,29 @@ knightwatch --pid <PID> --allow-process-commands
 | `--pid <PID>` | — | PID of a process to track (repeatable, optional) |
 | `--host <HOST>` | `0.0.0.0` | Host address for the API server |
 | `--port <PORT>` / `-p` | `8083` | Port for the API server |
-| `--enable-auth` | `false` | Enable authentication |
-| `--no-api` | `false` | Disable the API server entirely |
-| `--no-dashboard` | `false` | Disable the web dashboard |
-| `--blind` | `false` | Disable screen capture |
-| `--system-resources` | `false` | Enable CPU, memory, disk, network, battery, and thermal monitoring |
-| `--systemd` | `false` | Enable systemd monitor (Linux only) |
-| `--docker` | `false` | Enable docker tracker |
-| `--telegram` | `false` | Enable the Telegram bot |
-| `--with-webhook` | `false` | Enable webhook dispatching |
+| `--enable-auth` | `false*` | Enable authentication |
+| `--no-api` | `false*` | Disable the API server entirely |
+| `--no-dashboard` | `false*` | Disable the web dashboard |
+| `--blind` | `false*` | Disable screen capture |
+| `--system-resources` | `false*` | Enable CPU, memory, disk, network, battery, and thermal monitoring |
+| `--systemd` | `false*` | Enable systemd monitor (Linux only) |
+| `--docker` | `false*` | Enable docker tracker |
+| `--telegram` | `false*` | Enable the Telegram bot |
+| `--with-webhook` | `false*` | Enable webhook dispatching |
 | `--webhook <URL>` | — | Webhook target URL (repeatable) |
-| `--top-processes` | `false` | Enable top processes tracker |
+| `--top-processes` | `false*` | Enable top processes tracker |
 | `--limit-processes <N>` | `5` | Number of top processes to track |
-| `--allow-process-commands` | `false` | Enable process command endpoints (kill, track, untrack, poll control) — **always requires authentication** |
-| `--allow-screen-commands` | `false` | Enable screen command endpoints (poll control) — **always requires authentication** |
-| `--allow-system-resources-commands` | `false` | Enable system resources command endpoints (set tresholds, refresh masks, poll control) — **always requires authentication** |
-| `--allow-systemd-commands` | `false` | Enable systemd command endpoints (poll control) — **always requires authentication** |
-| `--allow-docker-commands` | `false` | Enable docker command endpoints (manager containers, poll control) — **always requires authentication** |
+| `--allow-process-commands` | `false*` | Enable process command endpoints (kill, track, untrack, poll control) — **always requires authentication** |
+| `--allow-screen-commands` | `false*` | Enable screen command endpoints (poll control) — **always requires authentication** |
+| `--allow-system-resources-commands` | `false*` | Enable system resources command endpoints (set tresholds, refresh masks, poll control) — **always requires authentication** |
+| `--allow-systemd-commands` | `false*` | Enable systemd command endpoints (poll control) — **always requires authentication** |
+| `--allow-docker-commands` | `false*` | Enable docker command endpoints (manager containers, poll control) — **always requires authentication** |
 
-> **Note:** `allowing commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
+**Notes:**
+
+- `allowing commands` always requires authentication regardless of the `--enable-auth` flag. The auth session endpoints are automatically enabled when this flag is set.
+
+- Boolean flags accept an optional value: --system-resources (true) or --system-resources false. Defaults can be persisted via config set-default — see [Runtime Defaults](https://github.com/YofaGh/knightwatch/wiki/Runtime-Defaults).
 
 ### Log Level
 
@@ -160,6 +164,7 @@ Full reference documentation is available in the [Wiki](https://github.com/YofaG
 - [Webhooks](https://github.com/YofaGh/knightwatch/wiki/Webhooks) — Payload format and event catalogue
 - [Authentication](https://github.com/YofaGh/knightwatch/wiki/Authentication) — User management and API auth
 - [Persistent Configuration](https://github.com/YofaGh/knightwatch/wiki/Persistent-Configuration) — Stored settings via `config` subcommand
+- [Runtime Defaults](https://github.com/YofaGh/knightwatch/wiki/Runtime-Defaults) — Persist CLI flag defaults for running as a systemd service
 
 ---
 

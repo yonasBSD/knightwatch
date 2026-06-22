@@ -2,8 +2,9 @@ use clap::Parser;
 use std::sync::OnceLock;
 
 use super::{
-    args::{CliArgs, Command, ConfigAction, ConfigField, UsersAction},
+    args::{CliArgs, Command, ConfigAction, ConfigField, ResolvedArgs, UsersAction},
     persistent::PersistentConfig,
+    persistent_args::ArgsConfig,
     store::JsonStore,
     users::Users,
 };
@@ -12,7 +13,7 @@ use crate::prelude::*;
 static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 pub struct AppConfig {
-    pub args: CliArgs,
+    pub args: ResolvedArgs,
     pub persistent: PersistentConfig,
 }
 
@@ -27,8 +28,10 @@ pub fn get_config() -> &'static AppConfig {
 }
 
 pub fn init_config() -> Result<&'static AppConfig> {
+    let cli = CliArgs::parse();
+    let stored_args = ArgsConfig::load()?;
     let config = AppConfig {
-        args: CliArgs::parse(),
+        args: ArgsConfig::resolve(cli, stored_args),
         persistent: PersistentConfig::load()?,
     };
     CONFIG
@@ -43,6 +46,10 @@ pub fn handle_command(command: &Command) -> Result<()> {
         Command::Users { action } => handle_users_action(action),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Config subcommand
+// ---------------------------------------------------------------------------
 
 fn handle_config_action(action: &ConfigAction) -> Result<()> {
     match action {
@@ -106,9 +113,27 @@ fn handle_config_action(action: &ConfigAction) -> Result<()> {
                 }
             }
         }
+        ConfigAction::SetDefault { field } => {
+            let mut args_cfg = ArgsConfig::load()?;
+            args_cfg.apply_set(field);
+            args_cfg.save()?;
+            println!("default updated.");
+        }
+        ConfigAction::GetDefault { field } => {
+            let args_cfg = ArgsConfig::load()?;
+            args_cfg.print_field(field);
+        }
+        ConfigAction::ClearDefaults => {
+            ArgsConfig::default().save()?;
+            println!("all stored defaults cleared.");
+        }
     };
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Users subcommand
+// ---------------------------------------------------------------------------
 
 fn handle_users_action(action: &UsersAction) -> Result<()> {
     match action {

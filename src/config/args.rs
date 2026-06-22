@@ -1,5 +1,7 @@
-use clap::Subcommand;
+use clap::{ArgAction, Subcommand};
 
+/// Raw CLI arguments. All flags are `Option<T>` so we can detect
+/// "user explicitly passed this" vs "not passed, fall back to stored defaults".
 #[derive(clap::Parser, Debug)]
 #[command(
     name = "knightwatch",
@@ -11,93 +13,144 @@ pub struct CliArgs {
     pub command: Option<Command>,
 
     /// Host address for the API server
-    #[arg(long, default_value = "0.0.0.0")]
-    pub host: String,
+    #[arg(long)]
+    pub host: Option<String>,
 
     /// Port for the API server
-    #[arg(long, short, default_value_t = 8083)]
-    pub port: u16,
+    #[arg(long, short)]
+    pub port: Option<u16>,
 
     /// Enable authentication
-    #[arg(long, default_value_t = false)]
-    pub enable_auth: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub enable_auth: Option<bool>,
 
     /// Disable the API server entirely
-    #[arg(long, default_value_t = false)]
-    pub no_api: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub no_api: Option<bool>,
 
     /// Disable the web dashboard
-    #[arg(long, default_value_t = false)]
-    pub no_dashboard: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub no_dashboard: Option<bool>,
 
     /// Disable the Screen Capture API, which may require elevated permissions on some platforms
     #[cfg(feature = "screenshot")]
-    #[arg(long, default_value_t = false)]
-    pub blind: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub blind: Option<bool>,
 
     /// Process ID to track
     #[arg(long)]
     pub pid: Vec<u32>,
 
     /// Enable Telegram bot
-    #[arg(long, default_value_t = false)]
-    pub telegram: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub telegram: Option<bool>,
 
     /// Webhook URLs to notify on process events (repeatable)
     #[arg(long = "webhook")]
     pub webhook_urls: Vec<String>,
 
     /// Enable Webhooks
-    #[arg(long, default_value_t = false)]
-    pub with_webhook: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub with_webhook: Option<bool>,
 
     /// Enable top processes tracker
-    #[arg(long, default_value_t = false)]
-    pub top_processes: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub top_processes: Option<bool>,
 
     /// Limit number of top processes to track
-    #[arg(long, default_value_t = 5)]
-    pub limit_processes: usize,
+    #[arg(long)]
+    pub limit_processes: Option<usize>,
 
     /// Enable system resources
-    #[arg(long, default_value_t = false)]
-    pub system_resources: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub system_resources: Option<bool>,
 
     /// Enable systemd
-    #[arg(long, default_value_t = false)]
-    pub systemd: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub systemd: Option<bool>,
 
     /// Enable docker tracker
-    #[arg(long, default_value_t = false)]
-    pub docker: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub docker: Option<bool>,
 
     /// Allow process commands (kill, track, etc.)
-    #[arg(long, default_value_t = false)]
-    pub allow_process_commands: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub allow_process_commands: Option<bool>,
 
     /// Allow screen commands
-    #[arg(long, default_value_t = false)]
-    pub allow_screen_commands: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub allow_screen_commands: Option<bool>,
 
     /// Allow system_resources commands
-    #[arg(long, default_value_t = false)]
-    pub allow_system_resources_commands: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub allow_system_resources_commands: Option<bool>,
 
     /// Allow systemd commands
-    #[arg(long, default_value_t = false)]
-    pub allow_systemd_commands: bool,
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub allow_systemd_commands: Option<bool>,
 
     /// Allow docker commands
-    #[arg(long, default_value_t = false)]
+    #[arg(long, num_args(0..=1), default_missing_value = "true")]
+    pub allow_docker_commands: Option<bool>,
+}
+
+/// The fully resolved, concrete configuration after merging CLI → stored defaults → hardcoded defaults.
+/// This is what the rest of the app uses; it has no `Option` anywhere.
+#[derive(Debug, Clone)]
+pub struct ResolvedArgs {
+    pub host: String,
+    pub port: u16,
+    pub enable_auth: bool,
+    pub no_api: bool,
+    pub no_dashboard: bool,
+    pub blind: bool,
+    pub pid: Vec<u32>,
+    pub telegram: bool,
+    pub webhook_urls: Vec<String>,
+    pub with_webhook: bool,
+    pub top_processes: bool,
+    pub limit_processes: usize,
+    pub system_resources: bool,
+    pub systemd: bool,
+    pub docker: bool,
+    pub allow_process_commands: bool,
+    pub allow_screen_commands: bool,
+    pub allow_system_resources_commands: bool,
+    pub allow_systemd_commands: bool,
     pub allow_docker_commands: bool,
 }
 
-impl CliArgs {
+impl ResolvedArgs {
     pub fn is_blind(&self) -> bool {
-        #[cfg(feature = "screenshot")]
-        return self.blind;
-        #[cfg(not(feature = "screenshot"))]
-        return true;
+        self.blind
+    }
+}
+
+/// Hardcoded fallback defaults — identical to the old `default_value` annotations.
+impl Default for ResolvedArgs {
+    fn default() -> Self {
+        Self {
+            host: "0.0.0.0".to_string(),
+            port: 8083,
+            enable_auth: false,
+            no_api: false,
+            no_dashboard: false,
+            blind: cfg!(not(feature = "screenshot")), // true when screenshot feature is absent
+            pid: vec![],
+            telegram: false,
+            webhook_urls: vec![],
+            with_webhook: false,
+            top_processes: false,
+            limit_processes: 5,
+            system_resources: false,
+            systemd: false,
+            docker: false,
+            allow_process_commands: false,
+            allow_screen_commands: false,
+            allow_system_resources_commands: false,
+            allow_systemd_commands: false,
+            allow_docker_commands: false,
+        }
     }
 }
 
@@ -127,26 +180,32 @@ pub enum ConfigAction {
         #[command(subcommand)]
         field: ConfigField,
     },
+    /// Set a stored runtime default
+    SetDefault {
+        #[command(subcommand)]
+        field: DefaultField,
+    },
+    /// Get a stored runtime default
+    GetDefault {
+        #[command(subcommand)]
+        field: DefaultField,
+    },
+    /// Clear all stored runtime defaults
+    ClearDefaults,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum UsersAction {
     /// Add a new user
-    Add {
-        username: String,
-    },
+    Add { username: String },
     /// Remove a user
-    Remove {
-        username: String,
-    },
+    Remove { username: String },
     /// List all users
     List,
     /// Remove all users
     Clear,
     /// Show the Telegram authentication token for a user
-    Token {
-        username: String,
-    },
+    Token { username: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -168,5 +227,82 @@ pub enum ConfigField {
             conflicts_with = "remove"
         )]
         clear: bool,
+    },
+}
+
+/// Each field that can be stored as a default.
+/// Boolean fields use `ArgAction::Set` so the user passes an explicit `true`/`false`
+/// rather than a presence flag (which clap would interpret as `SetTrue`).
+#[derive(Subcommand, Debug)]
+pub enum DefaultField {
+    Host {
+        value: String,
+    },
+    Port {
+        value: u16,
+    },
+    EnableAuth {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    NoApi {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    NoDashboard {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    #[cfg(feature = "screenshot")]
+    Blind {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    Telegram {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    WithWebhook {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    TopProcesses {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    LimitProcesses {
+        value: usize,
+    },
+    SystemResources {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    Systemd {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    Docker {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    AllowProcessCommands {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    AllowScreenCommands {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    AllowSystemResourcesCommands {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    AllowSystemdCommands {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
+    },
+    AllowDockerCommands {
+        #[arg(action = ArgAction::Set)]
+        value: bool,
     },
 }

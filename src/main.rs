@@ -19,11 +19,12 @@ mod webhook;
 #[tokio::main]
 async fn main() -> Result<(), errors::Error> {
     telemetry::init_tracing()?;
-    let config = config::init_config()?;
-    config::load_users()?;
-    if let Some(action) = config.args.command.as_ref() {
-        return config::handle_command(action);
+    if let Some(command) = <config::CliArgs as clap::Parser>::parse().command {
+        config::init_config()?;
+        return config::handle_command(&command);
     }
+    config::init_config()?;
+    config::load_users()?;
     #[cfg(feature = "screenshot")]
     screen_capture::init_screen_capture();
     process_tracker::init_process_tracker();

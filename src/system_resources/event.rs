@@ -73,6 +73,6 @@ impl From<&SystemResourcesEvent> for crate::events::EventPayload {
                 ("resources.battery_state_changed", json!({ "state": state }))
             }
         };
-        Self::new(event_name, data)
+        Self::new(crate::events::EventSource::SystemResources, event_name, data)
     }
 }

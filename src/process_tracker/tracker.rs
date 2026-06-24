@@ -479,7 +479,7 @@ impl ProcessTracker {
                 process
             })
         };
-        all.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+        all.sort_unstable_by_key(|b| std::cmp::Reverse(b.2));
         self.state.last_top_by_memory = all
             .iter()
             .take(self.limit_processes)
@@ -491,7 +491,7 @@ impl ProcessTracker {
             .take(self.limit_processes)
             .filter_map(|&(pid, _, _, _)| get_or_create(pid))
             .collect();
-        all.sort_unstable_by(|a, b| b.3.cmp(&a.3));
+        all.sort_unstable_by_key(|b| std::cmp::Reverse(b.3));
         self.state.last_top_by_disk = all
             .iter()
             .take(self.limit_processes)

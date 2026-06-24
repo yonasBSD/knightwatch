@@ -111,6 +111,6 @@ impl From<&DockerTrackerEvent> for crate::events::EventPayload {
                 }),
             ),
         };
-        Self::new(event_name, data)
+        Self::new(crate::events::EventSource::DockerTracker, event_name, data)
     }
 }

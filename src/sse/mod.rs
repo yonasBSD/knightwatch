@@ -1,11 +1,10 @@
 mod dispatcher;
-mod handler;
+pub mod handlers;
 
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
 
 use crate::{prelude::*, events::EventPayload};
-pub use handler::sse_stream;
 
 const CHANNEL_CAPACITY: usize = 256;
 

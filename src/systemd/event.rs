@@ -73,6 +73,6 @@ impl From<&SystemdEvent> for crate::events::EventPayload {
                 json!({ "unit_name": unit_name }),
             ),
         };
-        Self::new(event_name, data)
+        Self::new(crate::events::EventSource::Systemd, event_name, data)
     }
 }

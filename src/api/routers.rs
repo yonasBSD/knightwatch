@@ -5,6 +5,7 @@ use axum::{
 use tokio_util::sync::CancellationToken;
 
 use super::{end_points::*, middleware::auth_middleware};
+use crate::sse::handlers::*;
 
 fn create_auth_router() -> Router {
     Router::new()
@@ -53,7 +54,11 @@ fn create_api_router(cancel_token: CancellationToken, auth_layer: bool) -> Route
         .route("/container/{id_or_name}", get(get_docker_container)) // container by name or id
         .route("/top-containers", get(top_docker_containers)) // top containers
         // ── SSE ───────────────────────────────────────────────────────
-        .route("/sse", get(crate::sse::sse_stream))
+        .route("/sse", get(sse_stream))
+        .route("/sse/process-tracker", get(sse_stream_process))
+        .route("/sse/system-resources", get(sse_stream_system_resources))
+        .route("/sse/systemd", get(sse_stream_systemd))
+        .route("/sse/docker-tracker", get(sse_stream_docker))
         .with_state(cancel_token);
     if auth_layer {
         api.layer(middleware::from_fn(auth_middleware))

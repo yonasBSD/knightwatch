@@ -71,6 +71,6 @@ impl From<&ProcessTrackerEvent> for crate::events::EventPayload {
                 json!({ "pid": pid, "success": success }),
             ),
         };
-        Self::new(event_name, data)
+        Self::new(crate::events::EventSource::ProcessTracker, event_name, data)
     }
 }
